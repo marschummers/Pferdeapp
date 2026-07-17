@@ -4,7 +4,7 @@ import { VitePWA } from 'vite-plugin-pwa'
 
 // https://vite.dev/config/
 export default defineConfig({
-  base: '/stallplaner/',
+  base: '/Pferdeapp/',
   plugins: [
     react(),
     VitePWA({
@@ -17,8 +17,8 @@ export default defineConfig({
         theme_color: '#211d17',
         background_color: '#211d17',
         display: 'standalone',
-        start_url: '/stallplaner/',
-        scope: '/stallplaner/',
+        start_url: '/Pferdeapp/',
+        scope: '/Pferdeapp/',
         icons: [
           {
             src: 'icon-192-v1.png',
