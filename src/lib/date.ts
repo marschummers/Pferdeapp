@@ -35,6 +35,12 @@ export function formatDayLabel(date: Date): string {
   return `${WEEKDAY_NAMES[date.getDay()]}, ${date.getDate()}. ${date.toLocaleDateString('de-DE', { month: 'long' })}`;
 }
 
+// Formatiert einen dateStr ('YYYY-MM-DD') als 'DD.MM.YYYY' für die Anzeige.
+export function formatShortDate(dateStr: string): string {
+  const [y, m, d] = dateStr.split('-');
+  return `${d}.${m}.${y}`;
+}
+
 export function formatWeekRange(weekStart: Date): string {
   const weekEnd = addDays(weekStart, 6);
   const sameMonth = weekStart.getMonth() === weekEnd.getMonth();

@@ -1,5 +1,14 @@
 import Dexie, { type EntityTable } from 'dexie';
-import type { Caretaker, CareEntry, Ingredient, Meal, TaskDef, TimeSlotDef } from './types';
+import type {
+  Caretaker,
+  CareEntry,
+  HealthEvent,
+  Ingredient,
+  Meal,
+  TaskDef,
+  TimeSlotDef,
+  WeightEntry,
+} from './types';
 
 export const db = new Dexie('stallplaner') as Dexie & {
   caretakers: EntityTable<Caretaker, 'id'>;
@@ -8,6 +17,8 @@ export const db = new Dexie('stallplaner') as Dexie & {
   timeSlotDefs: EntityTable<TimeSlotDef, 'id'>;
   ingredients: EntityTable<Ingredient, 'id'>;
   meals: EntityTable<Meal, 'id'>;
+  weightEntries: EntityTable<WeightEntry, 'id'>;
+  healthEvents: EntityTable<HealthEvent, 'id'>;
 };
 
 db.version(1).stores({
@@ -17,6 +28,8 @@ db.version(1).stores({
   timeSlotDefs: 'id, order',
   ingredients: 'id, name',
   meals: 'id, name',
+  weightEntries: 'id, dateStr',
+  healthEvents: 'id, category, dateStr, nextDueDateStr',
 });
 
 // Nur beim allerersten Erzeugen der Datenbank (nicht bei jedem App-Start) mit sinnvollen
@@ -40,4 +53,15 @@ db.on('populate', () => {
 
 export function newId(): string {
   return crypto.randomUUID();
+}
+
+// Legt einen Gewichts-Eintrag für einen Tag an oder überschreibt den bestehenden
+// (ein Eintrag pro Kalendertag).
+export async function upsertWeightEntry(dateStr: string, weightKg: number) {
+  const existing = await db.weightEntries.where('dateStr').equals(dateStr).first();
+  if (existing) {
+    await db.weightEntries.update(existing.id, { weightKg });
+  } else {
+    await db.weightEntries.add({ id: newId(), dateStr, weightKg });
+  }
 }

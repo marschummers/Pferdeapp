@@ -825,6 +825,110 @@
   align-self: center;
 }
 
+.health-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: linear-gradient(160deg, var(--bg-elevated) 0%, var(--bg-elevated-2) 100%);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 0.7rem 0.9rem;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25);
+  text-decoration: none;
+  color: inherit;
+}
+
+.health-icon-badge {
+  flex-shrink: 0;
+  width: 2.6rem;
+  height: 2.6rem;
+  border-radius: 50%;
+  background: rgba(204, 154, 82, 0.15);
+  color: var(--accent-strong);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.health-row-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.health-row-title {
+  font-weight: 700;
+  color: var(--text);
+}
+
+.health-row-subtitle {
+  font-size: 0.76rem;
+  color: var(--text-dim);
+}
+
+.health-row-value {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.health-row-chevron {
+  flex-shrink: 0;
+  color: var(--text-dim);
+  font-size: 1.2rem;
+}
+
+.history-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  background: linear-gradient(160deg, var(--bg-elevated) 0%, var(--bg-elevated-2) 100%);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 0.65rem 0.85rem;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25);
+}
+
+.history-row-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem;
+  row-gap: 0.2rem;
+}
+
+.history-row-date {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--text);
+  font-size: 0.85rem;
+}
+
+.history-row-value {
+  flex: 1;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--accent-strong);
+}
+
+.history-row-next {
+  font-size: 0.78rem;
+  color: var(--accent-2);
+}
+
+.history-row-note {
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  flex-basis: 100%;
+}
+
 .stock-card {
   display: flex;
   flex-direction: column;

@@ -1,4 +1,4 @@
-type NavIconName = 'plan' | 'feeding' | 'stock' | 'management'
+type NavIconName = 'plan' | 'feeding' | 'health' | 'stock' | 'management'
 
 const commonProps = {
   width: 22,
@@ -29,6 +29,12 @@ export default function NavIcon({ name }: { name: NavIconName }) {
           <path d="M3.5 12 H20.5" />
           <path d="M9 8 C8.3 6.8 8.5 5.6 9.4 4.6" />
           <path d="M12 8 C11.5 6.5 11.8 5.2 13 4" />
+        </svg>
+      )
+    case 'health':
+      return (
+        <svg {...commonProps} aria-hidden="true">
+          <path d="M12 19.5 C6.5 15.3 3.5 11.8 3.5 8.3 C3.5 5.7 5.5 4 7.8 4 C9.6 4 11 5.1 12 6.7 C13 5.1 14.4 4 16.2 4 C18.5 4 20.5 5.7 20.5 8.3 C20.5 11.8 17.5 15.3 12 19.5 Z" />
         </svg>
       )
     case 'stock':

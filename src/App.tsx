@@ -3,6 +3,9 @@ import { Routes, Route, NavLink } from 'react-router-dom'
 import WeekPage from './pages/WeekPage'
 import FeedingPage from './pages/FeedingPage'
 import MealDetailPage from './pages/MealDetailPage'
+import HealthPage from './pages/HealthPage'
+import WeightHistoryPage from './pages/WeightHistoryPage'
+import HealthCategoryPage from './pages/HealthCategoryPage'
 import StockPage from './pages/StockPage'
 import ManagementPage from './pages/ManagementPage'
 import NavIcon from './components/NavIcon'
@@ -22,6 +25,9 @@ function App() {
             <Route path="/" element={<WeekPage />} />
             <Route path="/fuetterung" element={<FeedingPage />} />
             <Route path="/fuetterung/:mealId" element={<MealDetailPage />} />
+            <Route path="/gesundheit" element={<HealthPage />} />
+            <Route path="/gesundheit/gewicht" element={<WeightHistoryPage />} />
+            <Route path="/gesundheit/:category" element={<HealthCategoryPage />} />
             <Route path="/vorrat" element={<StockPage />} />
             <Route path="/verwaltung" element={<ManagementPage />} />
           </Routes>
@@ -35,6 +41,10 @@ function App() {
         <NavLink to="/fuetterung" className={({ isActive }) => (isActive ? 'active' : '')}>
           <NavIcon name="feeding" />
           Fütterung
+        </NavLink>
+        <NavLink to="/gesundheit" className={({ isActive }) => (isActive ? 'active' : '')}>
+          <NavIcon name="health" />
+          Gesundheit
         </NavLink>
         <NavLink to="/vorrat" className={({ isActive }) => (isActive ? 'active' : '')}>
           <NavIcon name="stock" />

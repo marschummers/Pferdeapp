@@ -75,3 +75,31 @@ export interface Meal {
   prepSteps: string[];
   tip?: string;
 }
+
+// Ein Gewichts-Eintrag. Ein Eintrag pro Kalendertag, erneutes Speichern am selben Tag
+// überschreibt den vorherigen Wert (siehe upsertWeightEntry in db.ts).
+export interface WeightEntry {
+  id: string;
+  dateStr: string; // 'YYYY-MM-DD'
+  weightKg: number;
+}
+
+export const HEALTH_CATEGORIES = ['impfung', 'wurmkur', 'hufschmied'] as const;
+export type HealthCategory = (typeof HEALTH_CATEGORIES)[number];
+
+export const HEALTH_CATEGORY_LABELS: Record<HealthCategory, string> = {
+  impfung: 'Impfungen',
+  wurmkur: 'Wurmkur',
+  hufschmied: 'Hufschmied',
+};
+
+// Ein protokolliertes Gesundheits-Ereignis (z.B. eine Impfung). `nextDueDateStr` ist die
+// optionale nächste Fälligkeit (z.B. Auffrischung), damit die Übersicht "nächste: ..." zeigen
+// kann statt nur des letzten Termins.
+export interface HealthEvent {
+  id: string;
+  category: HealthCategory;
+  dateStr: string; // wann es gemacht wurde
+  nextDueDateStr?: string;
+  note?: string;
+}
