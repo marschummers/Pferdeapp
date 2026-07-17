@@ -1,0 +1,161 @@
+import { useState } from 'react'
+import { useLiveQuery } from 'dexie-react-hooks'
+import { Link } from 'react-router-dom'
+import { db } from '../db/db'
+import type { CareEntry, Caretaker, Meal, TimeSlotDef } from '../db/types'
+import { addDays, formatDayLabel, formatWeekRange, startOfWeek, toDateStr, todayStr, weekDates } from '../lib/date'
+import CareEntryForm from '../components/CareEntryForm'
+
+function EntryCard({
+  entry,
+  caretaker,
+  timeSlot,
+  meal,
+  onEdit,
+}: {
+  entry: CareEntry
+  caretaker?: Caretaker
+  timeSlot?: TimeSlotDef
+  meal?: Meal
+  onEdit: () => void
+}) {
+  async function toggleTask(index: number) {
+    const updated = entry.tasks.map((t, i) => (i === index ? { ...t, done: !t.done } : t))
+    await db.careEntries.update(entry.id, { tasks: updated })
+  }
+
+  const doneCount = entry.tasks.filter((t) => t.done).length
+
+  return (
+    <div className="entry-card">
+      <div className="entry-card-top" onClick={onEdit}>
+        <span className="slot-badge">{timeSlot?.label ?? '–'}</span>
+        <span className="caretaker-dot" style={{ background: caretaker?.color ?? '#666' }} />
+        <span className="entry-card-caretaker">{caretaker?.name ?? '(gelöscht)'}</span>
+        {entry.tasks.length > 0 && (
+          <span className="entry-card-tasks-summary">
+            {doneCount}/{entry.tasks.length}
+          </span>
+        )}
+      </div>
+      {entry.mealId && (
+        <Link
+          to={`/fuetterung/${entry.mealId}`}
+          className="meal-chip"
+          onClick={(e) => e.stopPropagation()}
+        >
+          🍽 {meal?.name ?? '(gelöschte Mahlzeit)'}
+        </Link>
+      )}
+      {entry.tasks.length > 0 && (
+        <div className="task-chip-list" onClick={(e) => e.stopPropagation()}>
+          {entry.tasks.map((t, i) => (
+            <label className={`task-chip${t.done ? ' done' : ''}`} key={`${t.label}-${i}`}>
+              <input type="checkbox" checked={t.done} onChange={() => toggleTask(i)} />
+              {t.label}
+            </label>
+          ))}
+        </div>
+      )}
+      {entry.note && (
+        <div className="entry-card-note">
+          <div className="paper-card">{entry.note}</div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+export default function WeekPage() {
+  const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()))
+  const [formTarget, setFormTarget] = useState<{ dateStr: string; entry?: CareEntry } | null>(null)
+
+  const days = weekDates(weekStart)
+  const dateStrs = days.map(toDateStr)
+  const dateStrsKey = dateStrs.join(',')
+
+  const caretakers = useLiveQuery(() => db.caretakers.orderBy('name').toArray(), []) ?? []
+  const timeSlotDefs = useLiveQuery(() => db.timeSlotDefs.orderBy('order').toArray(), []) ?? []
+  const meals = useLiveQuery(() => db.meals.toArray(), []) ?? []
+  const entries =
+    useLiveQuery(() => db.careEntries.where('dateStr').anyOf(dateStrs).toArray(), [dateStrsKey]) ?? []
+
+  const caretakerById = new Map(caretakers.map((c) => [c.id, c]))
+  const timeSlotById = new Map(timeSlotDefs.map((s) => [s.id, s]))
+  const timeSlotOrder = new Map(timeSlotDefs.map((s) => [s.id, s.order]))
+  const mealById = new Map(meals.map((m) => [m.id, m]))
+  const today = todayStr()
+
+  return (
+    <div>
+      <h1>Wochenplan</h1>
+
+      <div className="week-nav">
+        <button onClick={() => setWeekStart((w) => addDays(w, -7))} aria-label="Vorherige Woche">
+          ‹
+        </button>
+        <span className="week-nav-range">{formatWeekRange(weekStart)}</span>
+        <button onClick={() => setWeekStart((w) => addDays(w, 7))} aria-label="Nächste Woche">
+          ›
+        </button>
+      </div>
+      <div className="week-today-row">
+        <button className="secondary-button today-button" onClick={() => setWeekStart(startOfWeek(new Date()))}>
+          Heute
+        </button>
+      </div>
+
+      {days.map((day) => {
+        const dateStr = toDateStr(day)
+        const dayEntries = entries
+          .filter((e) => e.dateStr === dateStr)
+          .sort((a, b) => (timeSlotOrder.get(a.timeSlotId) ?? 0) - (timeSlotOrder.get(b.timeSlotId) ?? 0))
+        const isNewFormOpenHere = formTarget?.dateStr === dateStr && !formTarget.entry
+
+        return (
+          <div className="day-group" key={dateStr}>
+            <div className="day-group-header">
+              <span className={`day-group-title${dateStr === today ? ' today' : ''}`}>
+                {formatDayLabel(day)}
+              </span>
+              <button
+                className="add-entry-button"
+                onClick={() => setFormTarget({ dateStr })}
+                aria-label="Termin hinzufügen"
+              >
+                +
+              </button>
+            </div>
+
+            <div className="entry-list">
+              {dayEntries.map((entry) =>
+                formTarget?.entry?.id === entry.id ? (
+                  <CareEntryForm
+                    key={entry.id}
+                    dateStr={dateStr}
+                    caretakers={caretakers}
+                    entry={entry}
+                    onClose={() => setFormTarget(null)}
+                  />
+                ) : (
+                  <EntryCard
+                    key={entry.id}
+                    entry={entry}
+                    caretaker={caretakerById.get(entry.caretakerId)}
+                    timeSlot={timeSlotById.get(entry.timeSlotId)}
+                    meal={entry.mealId ? mealById.get(entry.mealId) : undefined}
+                    onEdit={() => setFormTarget({ dateStr, entry })}
+                  />
+                ),
+              )}
+              {isNewFormOpenHere && (
+                <CareEntryForm dateStr={dateStr} caretakers={caretakers} onClose={() => setFormTarget(null)} />
+              )}
+              {dayEntries.length === 0 && !isNewFormOpenHere && <p className="hint">Noch nichts geplant.</p>}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
