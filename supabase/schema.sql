@@ -9,20 +9,25 @@
 -- Teil dieses Schemas -- die bleiben laut Konzept dauerhaft lokal, siehe Memory
 -- "project-supabase-sync-concept".
 --
--- BEKANNTE STOLPERFALLE (beim Erst-Setup aufgetreten): Falls ein Insert/Update trotz
--- nachweislich korrekter Policy (per pg_policies geprüft, sogar mit testweise komplett
--- durchlässigem `with check (true)` reproduziert) mit "new row violates row-level security
--- policy" fehlschlägt, obwohl der JWT/auth.uid() nachweislich stimmt: das war bei uns ein
--- offenbar hängender RLS-Auswertungszustand auf Supabase-Seite, den weder ein Projekt-Neustart
--- noch ein Schema-Reload behoben haben. Geholfen hat: `alter table <tabelle> disable row level
--- security;` gefolgt von `alter table <tabelle> enable row level security;` (Policies bleiben
--- dabei erhalten, nur kurz die Tabelle dazwischen ungeschützt -- nicht mit echten Daten machen).
+-- BEKANNTE, UNGELÖSTE STOLPERFALLE (mehrfach beim Ersteinrichten neuer Accounts aufgetreten,
+-- bisher nur auf der horses-Tabelle beobachtet): ein Insert/Update schlägt mit "new row
+-- violates row-level security policy" fehl, obwohl nachweislich alles korrekt ist -- JWT gültig,
+-- Policy laut pg_policies exakt wie hier im Code, auth.uid() löst im SQL-Editor korrekt auf,
+-- und sogar ein testweise komplett durchlässiges `with check (true)` schlägt mit demselben
+-- Fehler fehl. Das schließt einen Fehler in der Policy-Logik selbst aus. Getestete, NICHT
+-- zuverlässig wirksame Reparaturversuche: Projekt-Neustart, Schema-Reload,
+-- `alter table ... disable/enable row level security` (half einmal, beim zweiten Mal nicht
+-- mehr), Policies auf `(select auth.uid())` statt nacktem `auth.uid()` umstellen (siehe
+-- migrations/0005). Einzig zuverlässig: RLS auf der betroffenen Tabelle dauerhaft
+-- ausgeschaltet lassen (Sicherheitsrisiko, siehe Chat-Historie -- offener Punkt, der an den
+-- Supabase-Support gemeldet werden sollte, sobald mehr als eine vertraute Person betroffen ist).
 
 create table if not exists horses (
   id uuid primary key,
   name text not null,
   owner_id uuid not null references auth.users (id) on delete cascade,
   updated_at timestamptz not null default now(),
+  deleted_at timestamptz,
   created_at timestamptz not null default now()
 );
 
@@ -79,10 +84,11 @@ language sql
 security definer
 stable
 as $$
+  -- (select auth.uid()) statt nacktem auth.uid(): siehe migrations/0005_auth_uid_select_wrapper.sql
   select exists (
-    select 1 from horses where id = h_id and owner_id = auth.uid()
+    select 1 from horses where id = h_id and owner_id = (select auth.uid())
   ) or exists (
-    select 1 from horse_members where horse_id = h_id and user_id = auth.uid()
+    select 1 from horse_members where horse_id = h_id and user_id = (select auth.uid())
   );
 $$;
 
@@ -96,9 +102,9 @@ alter table care_entries enable row level security;
 create policy "horses: read if member" on horses
   for select using (has_horse_access(id));
 create policy "horses: owner creates" on horses
-  for insert with check (owner_id = auth.uid());
+  for insert with check (owner_id = (select auth.uid()));
 create policy "horses: owner updates" on horses
-  for update using (owner_id = auth.uid());
+  for update using (owner_id = (select auth.uid()));
 
 create policy "horse_members: read if member" on horse_members
   for select using (has_horse_access(horse_id));

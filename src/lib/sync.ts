@@ -70,6 +70,7 @@ interface RemoteHorse {
   name: string
   owner_id: string
   updated_at: string
+  deleted_at: string | null
 }
 
 interface RemoteCaretaker {
@@ -127,8 +128,20 @@ export async function syncAll(): Promise<void> {
   await mergeTable<Horse, RemoteHorse>(
     db.horses,
     'horses',
-    (h) => ({ id: h.id, name: h.name, owner_id: ownerId, updated_at: iso(h.updatedAt) }),
-    (r) => ({ id: r.id, name: r.name, ownerId: r.owner_id, updatedAt: ms(r.updated_at) }),
+    (h) => ({
+      id: h.id,
+      name: h.name,
+      owner_id: ownerId,
+      updated_at: iso(h.updatedAt),
+      deleted_at: h.deletedAt ? iso(h.deletedAt) : null,
+    }),
+    (r) => ({
+      id: r.id,
+      name: r.name,
+      ownerId: r.owner_id,
+      updatedAt: ms(r.updated_at),
+      deletedAt: r.deleted_at ? ms(r.deleted_at) : undefined,
+    }),
   )
 
   await mergeTable<Caretaker, RemoteCaretaker>(

@@ -1,36 +1,147 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { db } from '../../db/db'
 import { useActiveHorse } from '../../lib/activeHorse'
+import { useAuth } from '../../lib/auth'
+import type { Horse } from '../../db/types'
 
 export default function HorseSection() {
-  const { activeHorse } = useActiveHorse()
-  const [name, setName] = useState('')
+  const { session } = useAuth()
+  const { horses, activeHorseId } = useActiveHorse()
 
-  // Formular-Feld mit dem Namen des aktiven Pferds befüllen – auch erneut, wenn man
-  // zwischen Pferden umschaltet (nicht nur beim allerersten Laden).
-  useEffect(() => {
-    if (activeHorse) setName(activeHorse.name)
-  }, [activeHorse?.id])
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editingName, setEditingName] = useState('')
 
-  async function handleSave() {
-    const trimmed = name.trim()
-    if (!trimmed || !activeHorse) return
-    await db.horses.update(activeHorse.id, { name: trimmed, updatedAt: Date.now() })
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [deleteConfirmText, setDeleteConfirmText] = useState('')
+
+  // Nur der Owner darf laut Supabase-Regel ein Pferd umbenennen/löschen. Ein Pferd ohne
+  // ownerId wurde noch nie synchronisiert, kann also nur von diesem Gerät stammen.
+  function isMine(horse: Horse): boolean {
+    return horse.ownerId === undefined || horse.ownerId === session?.user.id
   }
+
+  function startEdit(horse: Horse) {
+    setEditingId(horse.id)
+    setEditingName(horse.name)
+  }
+
+  async function saveEdit() {
+    const trimmed = editingName.trim()
+    if (!trimmed || !editingId) return
+    await db.horses.update(editingId, { name: trimmed, updatedAt: Date.now() })
+    setEditingId(null)
+  }
+
+  function startDelete(horse: Horse) {
+    setDeletingId(horse.id)
+    setDeleteConfirmText('')
+  }
+
+  async function confirmDelete(horse: Horse) {
+    if (deleteConfirmText.trim() !== horse.name) return
+    const now = Date.now()
+    // Weiches Löschen kaskadiert von Hand auf alle zugehörigen Zeilen (kein Fremdschlüssel-
+    // Cascade, da wir nie hart löschen, siehe lib/sync.ts) – sonst blieben Termine/Betreuer:innen
+    // eines gelöschten Pferds als Karteileichen aktiv liegen.
+    await db.transaction(
+      'rw',
+      db.horses,
+      db.caretakers,
+      db.taskDefs,
+      db.timeSlotDefs,
+      db.careEntries,
+      async () => {
+        await db.horses.update(horse.id, { deletedAt: now, updatedAt: now })
+        await db.caretakers.where('horseId').equals(horse.id).modify({ deletedAt: now, updatedAt: now })
+        await db.taskDefs.where('horseId').equals(horse.id).modify({ deletedAt: now, updatedAt: now })
+        await db.timeSlotDefs.where('horseId').equals(horse.id).modify({ deletedAt: now, updatedAt: now })
+        await db.careEntries.where('horseId').equals(horse.id).modify({ deletedAt: now, updatedAt: now })
+      },
+    )
+    setDeletingId(null)
+  }
+
+  const deletingHorse = horses.find((h) => h.id === deletingId)
 
   return (
     <div>
-      <p className="hint">Der Name dieses Pferds – wird sichtbar, wenn ihr euch mit Freund:innen synct.</p>
+      <p className="hint">
+        Alle Pferde, auf die du Zugriff hast. Löschen entfernt auch alle zugehörigen Termine,
+        Betreuer:innen, Aufgaben und Zeitfenster dieses Pferds – für alle, die mitsynchronisieren.
+      </p>
 
-      <div className="edit-panel">
-        <div className="field">
-          <span>Name</span>
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="z.B. Luna" />
-        </div>
-        <button className="primary-button" onClick={handleSave} disabled={!name.trim() || !activeHorse}>
-          Speichern
-        </button>
+      <div className="card-list">
+        {horses.map((horse) => (
+          <div className="horse-manage-card" key={horse.id}>
+            {editingId === horse.id ? (
+              <>
+                <input
+                  value={editingName}
+                  onChange={(e) => setEditingName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      saveEdit()
+                    }
+                  }}
+                  autoFocus
+                />
+                <button className="icon-button" onClick={saveEdit} aria-label="Speichern">
+                  ✓
+                </button>
+              </>
+            ) : (
+              <>
+                <span className="horse-manage-name">
+                  🐴 {horse.name}
+                  {horse.id === activeHorseId && <span className="horse-manage-active-badge">aktiv</span>}
+                </span>
+                {isMine(horse) && (
+                  <>
+                    <button className="icon-button" onClick={() => startEdit(horse)} aria-label="Umbenennen">
+                      ✎
+                    </button>
+                    <button className="icon-button" onClick={() => startDelete(horse)} aria-label="Löschen">
+                      ✕
+                    </button>
+                  </>
+                )}
+              </>
+            )}
+          </div>
+        ))}
       </div>
+
+      {deletingHorse && (
+        <div className="edit-panel horse-delete-confirm">
+          <h3>„{deletingHorse.name}“ wirklich löschen?</h3>
+          <p className="hint">
+            Löscht auch alle Termine, Betreuer:innen, Aufgaben und Zeitfenster dieses Pferds – für alle, die
+            mitsynchronisieren. Das kann nicht rückgängig gemacht werden. Tippe zur Bestätigung den Namen „
+            {deletingHorse.name}“ ein:
+          </p>
+          <div className="field">
+            <input
+              value={deleteConfirmText}
+              onChange={(e) => setDeleteConfirmText(e.target.value)}
+              placeholder={deletingHorse.name}
+              autoFocus
+            />
+          </div>
+          <div className="edit-panel-actions">
+            <button className="secondary-button" onClick={() => setDeletingId(null)}>
+              Abbrechen
+            </button>
+            <button
+              className="primary-button horse-delete-button"
+              onClick={() => confirmDelete(deletingHorse)}
+              disabled={deleteConfirmText.trim() !== deletingHorse.name}
+            >
+              Endgültig löschen
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -763,6 +763,64 @@
   text-align: center;
 }
 
+/* --- Pferde-Verwaltung (Umbenennen/Löschen) --- */
+
+.horse-manage-card {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  background: linear-gradient(160deg, var(--bg-elevated) 0%, var(--bg-elevated-2) 100%);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 0.75rem 0.9rem;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25);
+}
+
+.horse-manage-card input {
+  flex: 1;
+  min-width: 0;
+}
+
+.horse-manage-name {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.horse-manage-active-badge {
+  flex-shrink: 0;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 700;
+  color: var(--accent-strong);
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  padding: 0.1rem 0.5rem;
+}
+
+.horse-delete-confirm {
+  margin-top: 0.8rem;
+  border-color: var(--danger);
+}
+
+.horse-delete-button {
+  background: var(--danger);
+  color: #fff;
+  box-shadow: none;
+}
+
+.horse-delete-button:disabled {
+  opacity: 0.4;
+}
+
 /* --- Sync-Leiste (Verwaltung) --- */
 
 .sync-bar {
@@ -825,11 +883,14 @@
   gap: 1.1rem;
   margin-bottom: 1.1rem;
   border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .sub-tabs button {
   background: none;
   border: none;
+  flex-shrink: 0;
   color: var(--text-dim);
   font-size: 0.82rem;
   font-weight: 600;

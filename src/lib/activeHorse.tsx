@@ -15,7 +15,7 @@ interface ActiveHorseState {
 const ActiveHorseContext = createContext<ActiveHorseState | null>(null)
 
 export function ActiveHorseProvider({ children }: { children: ReactNode }) {
-  const horses = useLiveQuery(() => db.horses.toArray(), []) ?? []
+  const horses = useLiveQuery(() => db.horses.filter((h) => !h.deletedAt).toArray(), []) ?? []
   const [activeHorseId, setActiveHorseIdState] = useState<string | null>(() =>
     localStorage.getItem(CURRENT_HORSE_ID_KEY),
   )
