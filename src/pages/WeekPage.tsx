@@ -100,8 +100,9 @@ export default function WeekPage() {
       [dateStrsKey, activeHorseId],
     ) ?? []
 
-  // Für den Hinweis unten: offene Aufgaben heute bei *anderen* Pferden, zu denen man ebenfalls
-  // Zugriff hat (z.B. über horse_members) – unabhängig von der gerade gewählten Kalenderwoche.
+  // Für den Hinweis unten: offene Aufgaben heute bei *anderen* Pferden (jeder angemeldete
+  // Account sieht alle Pferde, siehe has_horse_access in supabase/schema.sql) – unabhängig von
+  // der gerade gewählten Kalenderwoche.
   const otherHorseEntriesToday =
     useLiveQuery(
       () =>

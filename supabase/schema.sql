@@ -31,9 +31,11 @@ create table if not exists horses (
   created_at timestamptz not null default now()
 );
 
--- Wer außer dem Owner Zugriff auf ein Pferd hat (z.B. eingeladene Freund:innen). Wird in
--- diesem Schritt noch nicht von der App befuellt -- Mitglieder vorerst manuell hier im
--- SQL-Editor eintragen (der laeuft mit vollen Rechten, umgeht also die RLS-Policies unten).
+-- Aktuell UNGENUTZT fuer die Zugriffspruefung (siehe has_horse_access() weiter unten) -- die App
+-- wird nur von einer kleinen, vertrauten Gruppe genutzt, die sich gegenseitig bei allen Pferden
+-- hilft, daher ist der Zugriff auf Betreuer:innen/Aufgaben/Zeitfenster/Termine bewusst fuer jeden
+-- angemeldeten Account offen (migrations/0007) statt pro Pferd einzeln freigeschaltet werden zu
+-- muessen. Tabelle bleibt bestehen, falls spaeter doch feingranularer getrennt werden soll.
 create table if not exists horse_members (
   horse_id uuid not null references horses (id) on delete cascade,
   user_id uuid not null references auth.users (id) on delete cascade,
@@ -77,19 +79,17 @@ create table if not exists care_entries (
   updated_at timestamptz not null default now()
 );
 
--- Zugriff: wer Owner des Pferdes ist oder als Mitglied eingetragen ist.
+-- Zugriff auf Betreuer:innen/Aufgaben/Zeitfenster/Termine (und darüber auch lesend auf die
+-- Pferde selbst, siehe "horses: read if member" unten): jeder angemeldete Account, siehe
+-- migrations/0007_shared_access_all_authenticated.sql. Umbenennen/Löschen eines Pferds bleibt
+-- separat davon dem Owner vorbehalten (siehe "horses: owner updates"/"owner creates" unten).
 create or replace function has_horse_access(h_id uuid)
 returns boolean
 language sql
 security definer
 stable
 as $$
-  -- (select auth.uid()) statt nacktem auth.uid(): siehe migrations/0005_auth_uid_select_wrapper.sql
-  select exists (
-    select 1 from horses where id = h_id and owner_id = (select auth.uid())
-  ) or exists (
-    select 1 from horse_members where horse_id = h_id and user_id = (select auth.uid())
-  );
+  select (select auth.uid()) is not null;
 $$;
 
 alter table horses enable row level security;

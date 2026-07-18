@@ -4,8 +4,8 @@ import { db, CURRENT_HORSE_ID_KEY, setCurrentHorseId } from '../db/db'
 import type { Horse } from '../db/types'
 
 interface ActiveHorseState {
-  // Alle lokal bekannten Pferde (meist eins; mehr, sobald über horse_members/Sync Zugriff auf
-  // ein weiteres besteht). Wird u.a. vom HorseSwitcher genutzt.
+  // Alle lokal bekannten Pferde (jeder angemeldete Account sieht über Sync alle Pferde, siehe
+  // schema.sql). Wird u.a. vom HorseSwitcher genutzt.
   horses: Horse[]
   activeHorseId: string | null
   activeHorse: Horse | null

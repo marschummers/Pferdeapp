@@ -2,7 +2,7 @@ import { useAuth } from '../lib/auth'
 import { useActiveHorse } from '../lib/activeHorse'
 
 // Zeigt nichts, solange nur ein Pferd lokal bekannt ist (Normalfall) – erscheint erst, sobald
-// über horse_members/Sync Zugriff auf ein weiteres Pferd besteht.
+// via Sync ein weiteres Pferd lokal bekannt ist (jeder angemeldete Account sieht alle Pferde).
 export default function HorseSwitcher() {
   const { session } = useAuth()
   const { horses, activeHorseId, setActiveHorseId } = useActiveHorse()

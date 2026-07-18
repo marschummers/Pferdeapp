@@ -119,8 +119,8 @@ export const CURRENT_HORSE_ID_KEY = 'stallplaner-current-horse-id';
 //
 // Das Ergebnis wird in localStorage gemerkt und beim Umschalten über setCurrentHorseId (siehe
 // src/lib/activeHorse.tsx, dort als setActiveHorseId genutzt) aktualisiert – ohne explizite
-// Auswahl fällt es auf das erste bekannte Pferd zurück, sobald über Supabase-Sync/horse_members
-// mehr als eins lokal existiert.
+// Auswahl fällt es auf das erste bekannte Pferd zurück, sobald über Supabase-Sync mehr als eins
+// lokal existiert (jeder angemeldete Account sieht alle Pferde, siehe schema.sql).
 export async function getCurrentHorseId(): Promise<string> {
   const cached = localStorage.getItem(CURRENT_HORSE_ID_KEY);
   if (cached) return cached;
