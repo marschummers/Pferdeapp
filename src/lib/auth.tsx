@@ -8,6 +8,12 @@ interface AuthState {
   // null, wenn Supabase nicht konfiguriert ist (fehlende Umgebungsvariablen).
   configured: boolean
   signInWithOtp: (email: string) => Promise<{ error: string | null }>
+  // Bestätigt den 6-stelligen Code aus derselben Mail wie der Login-Link. Wichtig für als
+  // Home-Bildschirm-App installierte Nutzung auf iOS: die bekommt einen eigenen, von Safari
+  // und dem Mail-Mini-Browser komplett getrennten Speicherbereich – ein Login per Link landet
+  // dort nie. Der Code wird dagegen direkt in der schon geöffneten App eingegeben, ganz ohne
+  // Browser-Wechsel, und bleibt so im richtigen Speicherbereich.
+  verifyOtp: (email: string, token: string) => Promise<{ error: string | null }>
   signOut: () => Promise<void>
 }
 
@@ -41,12 +47,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error: error?.message ?? null }
   }
 
+  async function verifyOtp(email: string, token: string) {
+    if (!supabase) return { error: 'Supabase ist nicht konfiguriert.' }
+    const { error } = await supabase.auth.verifyOtp({ email, token, type: 'email' })
+    return { error: error?.message ?? null }
+  }
+
   async function signOut() {
     await supabase?.auth.signOut()
   }
 
   return (
-    <AuthContext.Provider value={{ session, loading, configured: !!supabase, signInWithOtp, signOut }}>
+    <AuthContext.Provider value={{ session, loading, configured: !!supabase, signInWithOtp, verifyOtp, signOut }}>
       {children}
     </AuthContext.Provider>
   )

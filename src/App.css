@@ -44,6 +44,11 @@
   margin: -0.3rem 0 0.7rem;
 }
 
+.login-alt-email {
+  width: 100%;
+  margin-top: 0.6rem;
+}
+
 .app-content {
   flex: 1;
   display: flex;

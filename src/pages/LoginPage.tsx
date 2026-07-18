@@ -2,11 +2,15 @@ import { useState } from 'react'
 import { useAuth } from '../lib/auth'
 
 export default function LoginPage() {
-  const { signInWithOtp } = useAuth()
+  const { signInWithOtp, verifyOtp } = useAuth()
   const [email, setEmail] = useState('')
   const [sent, setSent] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+
+  const [code, setCode] = useState('')
+  const [codeError, setCodeError] = useState<string | null>(null)
+  const [verifying, setVerifying] = useState(false)
 
   async function handleSubmit() {
     const trimmed = email.trim()
@@ -22,17 +26,66 @@ export default function LoginPage() {
     }
   }
 
+  async function handleVerifyCode() {
+    const trimmed = code.trim()
+    if (!trimmed) return
+    setVerifying(true)
+    setCodeError(null)
+    const { error: verifyError } = await verifyOtp(email.trim(), trimmed)
+    setVerifying(false)
+    if (verifyError) setCodeError(verifyError)
+    // bei Erfolg übernimmt onAuthStateChange in auth.tsx automatisch den Wechsel zur App
+  }
+
+  function handleUseDifferentEmail() {
+    setSent(false)
+    setCode('')
+    setCodeError(null)
+    setError(null)
+  }
+
   return (
     <div className="login-screen">
       <h1>Stallplaner</h1>
       <div className="edit-panel login-panel">
         {sent ? (
-          <p className="hint">
-            Link verschickt an <strong>{email}</strong> – bitte E-Mail-Postfach prüfen und den Link öffnen.
-          </p>
+          <>
+            <p className="hint">
+              Mail verschickt an <strong>{email}</strong> – entweder den Link darin öffnen, oder direkt hier den
+              6-stelligen Code aus derselben Mail eingeben (empfiehlt sich, wenn du die App vom Home-Bildschirm aus
+              nutzt).
+            </p>
+            <div className="field">
+              <span>Code</span>
+              <input
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                placeholder="123456"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    handleVerifyCode()
+                  }
+                }}
+                autoFocus
+              />
+            </div>
+            {codeError && <p className="login-error">{codeError}</p>}
+            <button className="primary-button" onClick={handleVerifyCode} disabled={!code.trim() || verifying}>
+              {verifying ? 'Wird geprüft…' : 'Code bestätigen'}
+            </button>
+            <button className="secondary-button login-alt-email" onClick={handleUseDifferentEmail}>
+              Andere E-Mail-Adresse verwenden
+            </button>
+          </>
         ) : (
           <>
-            <p className="hint">Melde dich mit deiner E-Mail-Adresse an, du bekommst dann einen Login-Link.</p>
+            <p className="hint">
+              Melde dich mit deiner E-Mail-Adresse an, du bekommst dann einen Login-Link und einen Code.
+            </p>
             <div className="field">
               <span>E-Mail</span>
               <input
