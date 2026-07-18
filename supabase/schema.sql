@@ -8,11 +8,21 @@
 -- Betreuer:innen/Aufgaben/Zeitfenster/Termine. Zutaten und Mahlzeiten sind bewusst NICHT
 -- Teil dieses Schemas -- die bleiben laut Konzept dauerhaft lokal, siehe Memory
 -- "project-supabase-sync-concept".
+--
+-- BEKANNTE STOLPERFALLE (beim Erst-Setup aufgetreten): Falls ein Insert/Update trotz
+-- nachweislich korrekter Policy (per pg_policies geprüft, sogar mit testweise komplett
+-- durchlässigem `with check (true)` reproduziert) mit "new row violates row-level security
+-- policy" fehlschlägt, obwohl der JWT/auth.uid() nachweislich stimmt: das war bei uns ein
+-- offenbar hängender RLS-Auswertungszustand auf Supabase-Seite, den weder ein Projekt-Neustart
+-- noch ein Schema-Reload behoben haben. Geholfen hat: `alter table <tabelle> disable row level
+-- security;` gefolgt von `alter table <tabelle> enable row level security;` (Policies bleiben
+-- dabei erhalten, nur kurz die Tabelle dazwischen ungeschützt -- nicht mit echten Daten machen).
 
 create table if not exists horses (
   id uuid primary key,
   name text not null,
   owner_id uuid not null references auth.users (id) on delete cascade,
+  updated_at timestamptz not null default now(),
   created_at timestamptz not null default now()
 );
 

@@ -710,6 +710,61 @@
   text-align: center;
 }
 
+/* --- Sync-Leiste (Verwaltung) --- */
+
+.sync-bar {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 0.8rem 0.9rem;
+  margin-bottom: 1.1rem;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25);
+}
+
+.sync-bar-account {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  margin-bottom: 0.6rem;
+}
+
+.sync-bar-email {
+  min-width: 0;
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sync-bar-signout {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--danger);
+  font-size: 0.78rem;
+  padding: 0;
+}
+
+.sync-button {
+  width: 100%;
+}
+
+.sync-bar-status {
+  color: var(--text-dim);
+  font-size: 0.76rem;
+  margin: 0.5rem 0 0;
+  text-align: center;
+}
+
+.sync-bar-error {
+  color: var(--danger);
+  font-size: 0.8rem;
+  margin: 0.5rem 0 0;
+  text-align: center;
+}
+
 /* --- Unter-Tabs (Verwaltung) --- */
 
 .sub-tabs {

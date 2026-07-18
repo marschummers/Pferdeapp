@@ -11,8 +11,9 @@ interface Props {
 }
 
 export default function CareEntryForm({ dateStr, caretakers, entry, onClose }: Props) {
-  const timeSlotDefs = useLiveQuery(() => db.timeSlotDefs.orderBy('order').toArray(), []) ?? []
-  const taskDefs = useLiveQuery(() => db.taskDefs.orderBy('order').toArray(), []) ?? []
+  const timeSlotDefs =
+    useLiveQuery(() => db.timeSlotDefs.orderBy('order').filter((t) => !t.deletedAt).toArray(), []) ?? []
+  const taskDefs = useLiveQuery(() => db.taskDefs.orderBy('order').filter((t) => !t.deletedAt).toArray(), []) ?? []
   const meals = useLiveQuery(() => db.meals.orderBy('name').toArray(), []) ?? []
 
   const [timeSlotId, setTimeSlotId] = useState(entry?.timeSlotId ?? '')
@@ -95,7 +96,9 @@ export default function CareEntryForm({ dateStr, caretakers, entry, onClose }: P
   async function handleDelete() {
     if (!entry) return
     if (!confirm('Eintrag löschen?')) return
-    await db.careEntries.delete(entry.id)
+    // Weiches Löschen statt Entfernen: läuft dadurch wie jede andere Änderung mit durch den
+    // Supabase-Sync, siehe lib/sync.ts.
+    await db.careEntries.update(entry.id, { deletedAt: Date.now(), updatedAt: Date.now() })
     onClose()
   }
 

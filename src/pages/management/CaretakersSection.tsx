@@ -14,7 +14,7 @@ const COLOR_CHOICES = [
 ]
 
 export default function CaretakersSection() {
-  const caretakers = useLiveQuery(() => db.caretakers.orderBy('name').toArray(), [])
+  const caretakers = useLiveQuery(() => db.caretakers.orderBy('name').filter((c) => !c.deletedAt).toArray(), [])
   const [name, setName] = useState('')
   const [color, setColor] = useState(COLOR_CHOICES[0])
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -45,8 +45,13 @@ export default function CaretakersSection() {
 
   async function handleDelete(id: string) {
     if (!confirm('Betreuer:in löschen? Zugehörige Plan-Einträge werden ebenfalls entfernt.')) return
-    await db.careEntries.where('caretakerId').equals(id).delete()
-    await db.caretakers.delete(id)
+    // Weiches Löschen statt Entfernen, damit es beim Supabase-Sync mitläuft (lib/sync.ts).
+    const now = Date.now()
+    await db.careEntries
+      .where('caretakerId')
+      .equals(id)
+      .modify({ deletedAt: now, updatedAt: now })
+    await db.caretakers.update(id, { deletedAt: now, updatedAt: now })
     if (editingId === id) resetForm()
   }
 

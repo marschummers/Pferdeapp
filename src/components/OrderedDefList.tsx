@@ -9,6 +9,7 @@ interface Def {
   label: string
   order: number
   updatedAt: number
+  deletedAt?: number
 }
 
 interface Props {
@@ -21,7 +22,7 @@ interface Props {
 // Verwaltet eine sortierbare Liste einfacher Stammdaten-Einträge (Label + Reihenfolge).
 // Wird sowohl für Aufgaben als auch für Zeitfenster verwendet, da beide dieselbe Form haben.
 export default function OrderedDefList({ table, placeholder, emptyHint, deleteConfirm }: Props) {
-  const items = useLiveQuery(() => table.orderBy('order').toArray(), [table]) ?? []
+  const items = useLiveQuery(() => table.orderBy('order').filter((i) => !i.deletedAt).toArray(), [table]) ?? []
   const [newLabel, setNewLabel] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingLabel, setEditingLabel] = useState('')
@@ -49,7 +50,8 @@ export default function OrderedDefList({ table, placeholder, emptyHint, deleteCo
 
   async function handleDelete(id: string, label: string) {
     if (!confirm(deleteConfirm(label))) return
-    await table.delete(id)
+    // Weiches Löschen statt Entfernen, damit es beim Supabase-Sync mitläuft (lib/sync.ts).
+    await table.update(id, { deletedAt: Date.now(), updatedAt: Date.now() })
   }
 
   async function move(index: number, direction: -1 | 1) {

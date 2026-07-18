@@ -50,7 +50,7 @@ db.version(2)
   .upgrade(async (tx) => {
     const horseId = newId();
     const now = Date.now();
-    await tx.table('horses').add({ id: horseId, name: 'Mein Pferd' });
+    await tx.table('horses').add({ id: horseId, name: 'Mein Pferd', updatedAt: now });
     for (const tableName of ['caretakers', 'careEntries', 'taskDefs', 'timeSlotDefs']) {
       await tx
         .table(tableName)
@@ -62,13 +62,29 @@ db.version(2)
     }
   });
 
+// Backfillt `updatedAt` auf Pferde-Zeilen, die noch aus der Zeit vor diesem Feld stammen:
+// wer die App schon vor der Sync-Vorbereitung genutzt hat, durchlief das obige version(2)-
+// Upgrade, als dessen Code sein Pferd noch ohne updatedAt anlegte. Dexie führt ein einmal
+// erreichtes Versions-Upgrade nie erneut aus (auch nicht, wenn sich dessen Code später ändert
+// wie hier), daher ein eigener, neuer Versionsschritt statt version(2) nachträglich zu ändern.
+// Ohne das schlägt der Supabase-Sync mit "Invalid time value" fehl (new Date(undefined)).
+db.version(3).upgrade(async (tx) => {
+  const now = Date.now();
+  await tx
+    .table('horses')
+    .toCollection()
+    .modify((h) => {
+      if (h.updatedAt === undefined) h.updatedAt = now;
+    });
+});
+
 // Nur beim allerersten Erzeugen der Datenbank (nicht bei jedem App-Start) mit sinnvollen
 // Standardwerten befüllen, damit direkt nutzbare Zeitfenster/Aufgaben vorhanden sind.
 // Läuft für Neuinstallationen direkt auf der aktuellen Version (nicht über .upgrade()).
 db.on('populate', () => {
   const horseId = newId();
   const now = Date.now();
-  db.horses.add({ id: horseId, name: 'Mein Pferd' });
+  db.horses.add({ id: horseId, name: 'Mein Pferd', updatedAt: now });
 
   const defaultTimeSlots: TimeSlotDef[] = [
     { id: newId(), horseId, label: 'Morgens', order: 0, updatedAt: now },
@@ -90,14 +106,25 @@ export function newId(): string {
   return crypto.randomUUID();
 }
 
+const CURRENT_HORSE_ID_KEY = 'stallplaner-current-horse-id';
+
 // Liefert die id des aktuell aktiven Pferds. Auf einem Gerät existiert lokal bislang immer
 // genau ein Pferd (siehe Horse in types.ts) – ein Umschalter zwischen mehreren ist ein
-// zurückgestellter nächster Schritt. Bewusst async statt über localStorage gelöst, damit
+// zurückgestellter nächster Schritt. Bewusst async statt rein über localStorage gelöst, damit
 // kein Aufruf vor Abschluss von populate/upgrade ins Leere laufen kann: Dexie stellt sicher,
 // dass diese Abfrage erst aufgelöst wird, nachdem die Datenbank vollständig geöffnet ist.
+//
+// Das Ergebnis wird trotzdem in localStorage "angepinnt": sobald der Supabase-Sync (siehe
+// lib/sync.ts) erlaubt, dass über horse_members auch fremde Pferde lokal landen, wäre
+// db.horses.toCollection().first() sonst mehrdeutig und könnte nach einem Sync plötzlich ein
+// anderes Pferd als "aktiv" liefern als vorher. Vollständige Isolation mehrerer lokaler Pferde
+// (Lese-Queries nach horseId filtern) ist weiterhin Teil des zurückgestellten Umschalter-Schritts.
 export async function getCurrentHorseId(): Promise<string> {
+  const cached = localStorage.getItem(CURRENT_HORSE_ID_KEY);
+  if (cached) return cached;
   const horse = await db.horses.toCollection().first();
   if (!horse) throw new Error('Kein Pferd vorhanden');
+  localStorage.setItem(CURRENT_HORSE_ID_KEY, horse.id);
   return horse.id;
 }
 

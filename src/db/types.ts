@@ -5,9 +5,12 @@
 export interface Horse {
   id: string;
   name: string;
+  updatedAt: number;
 }
 
 // Eine Person, die sich um das Pferd kümmern kann (z.B. Besitzerin, Reitbeteiligung, Stallnachbarin).
+// `deletedAt` markiert weiches Löschen (siehe lib/sync.ts) statt die Zeile zu entfernen, damit
+// eine Löschung beim Sync wie jede andere Änderung per Last-Write-Wins verteilt werden kann.
 export interface Caretaker {
   id: string;
   horseId: string;
@@ -15,6 +18,7 @@ export interface Caretaker {
   // Hex-Farbe zur schnellen visuellen Unterscheidung im Wochenplan.
   color: string;
   updatedAt: number;
+  deletedAt?: number;
 }
 
 // Ein wählbares Zeitfenster (z.B. "Morgens"), frei in der Verwaltung gepflegt.
@@ -25,6 +29,7 @@ export interface TimeSlotDef {
   label: string;
   order: number;
   updatedAt: number;
+  deletedAt?: number;
 }
 
 // Eine wählbare Aufgabe (z.B. "Füttern"), frei in der Verwaltung gepflegt.
@@ -36,6 +41,7 @@ export interface TaskDef {
   label: string;
   order: number;
   updatedAt: number;
+  deletedAt?: number;
 }
 
 export interface CareTaskState {
@@ -48,6 +54,8 @@ export interface CareTaskState {
 // damit im Wochenplan direkt sichtbar ist, was zubereitet werden muss.
 // `mealDeductedAt` markiert, ob/wann die Zutatenmengen dieser Mahlzeit bereits vom Vorrat
 // abgezogen wurden (siehe lib/stock.ts) – verhindert doppelten Abzug bei jedem App-Start.
+// Bewusst NICHT Teil des Supabase-Sync (siehe lib/sync.ts): der Vorratsabzug hängt an lokalen,
+// nicht synchronisierten Zutaten, ist also grundsätzlich pro Gerät zu verstehen.
 export interface CareEntry {
   id: string;
   horseId: string;
@@ -59,6 +67,7 @@ export interface CareEntry {
   mealId?: string;
   mealDeductedAt?: number;
   updatedAt: number;
+  deletedAt?: number;
 }
 
 // Eine Zutat als Grunddatum (z.B. "Heucobs"), einmal angelegt und in beliebig vielen

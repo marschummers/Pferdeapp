@@ -74,11 +74,16 @@ export default function WeekPage() {
   const dateStrs = days.map(toDateStr)
   const dateStrsKey = dateStrs.join(',')
 
-  const caretakers = useLiveQuery(() => db.caretakers.orderBy('name').toArray(), []) ?? []
-  const timeSlotDefs = useLiveQuery(() => db.timeSlotDefs.orderBy('order').toArray(), []) ?? []
+  const caretakers =
+    useLiveQuery(() => db.caretakers.orderBy('name').filter((c) => !c.deletedAt).toArray(), []) ?? []
+  const timeSlotDefs =
+    useLiveQuery(() => db.timeSlotDefs.orderBy('order').filter((t) => !t.deletedAt).toArray(), []) ?? []
   const meals = useLiveQuery(() => db.meals.toArray(), []) ?? []
   const entries =
-    useLiveQuery(() => db.careEntries.where('dateStr').anyOf(dateStrs).toArray(), [dateStrsKey]) ?? []
+    useLiveQuery(
+      () => db.careEntries.where('dateStr').anyOf(dateStrs).filter((e) => !e.deletedAt).toArray(),
+      [dateStrsKey],
+    ) ?? []
 
   const caretakerById = new Map(caretakers.map((c) => [c.id, c]))
   const timeSlotById = new Map(timeSlotDefs.map((s) => [s.id, s]))

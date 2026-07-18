@@ -15,7 +15,7 @@ export default function HorseSection() {
   async function handleSave() {
     const trimmed = name.trim()
     if (!trimmed || !horse) return
-    await db.horses.update(horse.id, { name: trimmed })
+    await db.horses.update(horse.id, { name: trimmed, updatedAt: Date.now() })
   }
 
   return (
