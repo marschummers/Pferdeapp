@@ -77,6 +77,7 @@ interface RemoteCaretaker {
   horse_id: string
   name: string
   color: string
+  user_id: string | null
   updated_at: string
   deleted_at: string | null
 }
@@ -138,6 +139,7 @@ export async function syncAll(): Promise<void> {
       horse_id: c.horseId,
       name: c.name,
       color: c.color,
+      user_id: c.userId ?? null,
       updated_at: iso(c.updatedAt),
       deleted_at: c.deletedAt ? iso(c.deletedAt) : null,
     }),
@@ -146,6 +148,7 @@ export async function syncAll(): Promise<void> {
       horseId: r.horse_id,
       name: r.name,
       color: r.color,
+      userId: r.user_id ?? undefined,
       updatedAt: ms(r.updated_at),
       deletedAt: r.deleted_at ? ms(r.deleted_at) : undefined,
     }),

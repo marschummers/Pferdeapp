@@ -1,0 +1,11 @@
+-- Stallplaner: verknuepft optional einen Betreuer mit dem eigenen Supabase-Account
+-- ("Das bin ich", siehe CaretakersSection.tsx) -- dient als Vorauswahl beim Anlegen neuer
+-- Termine.
+--
+-- Einmalig zusaetzlich im Supabase SQL-Editor ausfuehren. "add column if not exists", also
+-- gefahrlos mehrfach ausfuehrbar.
+--
+-- "on delete set null" statt cascade: wird der Account irgendwann geloescht, soll der
+-- Betreuer-Eintrag selbst bestehen bleiben (er repraesentiert weiterhin eine reale Person am
+-- Stall), nur die Verknuepfung zum (dann nicht mehr existierenden) Account entfaellt.
+alter table caretakers add column if not exists user_id uuid references auth.users (id) on delete set null;

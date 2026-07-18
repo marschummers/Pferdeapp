@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, getCurrentHorseId, newId } from '../../db/db'
 import { useActiveHorse } from '../../lib/activeHorse'
+import { useAuth } from '../../lib/auth'
 
 const COLOR_CHOICES = [
   '#b5793a', // Sattelbraun
@@ -15,6 +16,7 @@ const COLOR_CHOICES = [
 ]
 
 export default function CaretakersSection() {
+  const { session } = useAuth()
   const { activeHorseId } = useActiveHorse()
   const caretakers = useLiveQuery(
     () => db.caretakers.orderBy('name').filter((c) => c.horseId === activeHorseId && !c.deletedAt).toArray(),
@@ -48,6 +50,23 @@ export default function CaretakersSection() {
     resetForm()
   }
 
+  // Markiert einen Betreuer als "Das bin ich" (verknüpft ihn mit dem eigenen Account) bzw.
+  // hebt die Markierung wieder auf. Pro Pferd und Account darf immer nur ein Betreuer verknüpft
+  // sein – eine vorherige Markierung wird beim Setzen einer neuen automatisch entfernt.
+  async function handleToggleMe(caretaker: NonNullable<typeof caretakers>[number]) {
+    if (!session) return
+    const now = Date.now()
+    if (caretaker.userId === session.user.id) {
+      await db.caretakers.update(caretaker.id, { userId: undefined, updatedAt: now })
+      return
+    }
+    const previous = caretakers?.find((c) => c.userId === session.user.id)
+    if (previous) {
+      await db.caretakers.update(previous.id, { userId: undefined, updatedAt: now })
+    }
+    await db.caretakers.update(caretaker.id, { userId: session.user.id, updatedAt: now })
+  }
+
   async function handleDelete(id: string) {
     if (!confirm('Betreuer:in löschen? Zugehörige Plan-Einträge werden ebenfalls entfernt.')) return
     // Weiches Löschen statt Entfernen, damit es beim Supabase-Sync mitläuft (lib/sync.ts).
@@ -72,6 +91,16 @@ export default function CaretakersSection() {
           <div className="caretaker-card" key={c.id}>
             <span className="caretaker-dot-lg" style={{ background: c.color }} />
             <span className="caretaker-card-name">{c.name}</span>
+            {session && (
+              <button
+                className={`caretaker-me-toggle${c.userId === session.user.id ? ' active' : ''}`}
+                onClick={() => handleToggleMe(c)}
+                title={c.userId === session.user.id ? 'Das bist du' : 'Als „Das bin ich“ markieren'}
+                aria-label={c.userId === session.user.id ? 'Das bist du' : 'Als „Das bin ich“ markieren'}
+              >
+                {c.userId === session.user.id ? '★' : '☆'}
+              </button>
+            )}
             <button className="icon-button" onClick={() => startEdit(c.id, c.name, c.color)} aria-label="Bearbeiten">
               ✎
             </button>

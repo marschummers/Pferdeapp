@@ -13,6 +13,9 @@ export interface Horse {
 // Eine Person, die sich um das Pferd kümmern kann (z.B. Besitzerin, Reitbeteiligung, Stallnachbarin).
 // `deletedAt` markiert weiches Löschen (siehe lib/sync.ts) statt die Zeile zu entfernen, damit
 // eine Löschung beim Sync wie jede andere Änderung per Last-Write-Wins verteilt werden kann.
+// `userId` verknüpft den Betreuer optional mit dem eigenen Supabase-Account ("Das bin ich",
+// siehe CaretakersSection.tsx) – dient als Vorauswahl beim Anlegen neuer Termine
+// (CareEntryForm.tsx), maximal ein Betreuer pro Pferd und Account.
 export interface Caretaker {
   id: string;
   horseId: string;
@@ -21,6 +24,7 @@ export interface Caretaker {
   color: string;
   updatedAt: number;
   deletedAt?: number;
+  userId?: string;
 }
 
 // Ein wählbares Zeitfenster (z.B. "Morgens"), frei in der Verwaltung gepflegt.

@@ -905,6 +905,20 @@
   color: var(--text);
 }
 
+.caretaker-me-toggle {
+  background: none;
+  border: none;
+  font-size: 1.15rem;
+  line-height: 1;
+  padding: 0.3rem 0.3rem;
+  flex-shrink: 0;
+  color: var(--text-dim);
+}
+
+.caretaker-me-toggle.active {
+  color: var(--accent-strong);
+}
+
 .color-swatch-row {
   display: flex;
   flex-wrap: wrap;

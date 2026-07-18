@@ -40,6 +40,7 @@ create table if not exists caretakers (
   horse_id uuid not null references horses (id) on delete cascade,
   name text not null,
   color text not null,
+  user_id uuid references auth.users (id) on delete set null,
   updated_at timestamptz not null default now()
 );
 

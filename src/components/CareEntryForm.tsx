@@ -3,6 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import type { CareEntry, CareTaskState, Caretaker } from '../db/types'
 import { db, getCurrentHorseId, newId } from '../db/db'
 import { useActiveHorse } from '../lib/activeHorse'
+import { useAuth } from '../lib/auth'
 
 interface Props {
   dateStr: string
@@ -12,6 +13,7 @@ interface Props {
 }
 
 export default function CareEntryForm({ dateStr, caretakers, entry, onClose }: Props) {
+  const { session } = useAuth()
   const { activeHorseId } = useActiveHorse()
   const timeSlotDefs =
     useLiveQuery(
@@ -25,8 +27,12 @@ export default function CareEntryForm({ dateStr, caretakers, entry, onClose }: P
     ) ?? []
   const meals = useLiveQuery(() => db.meals.orderBy('name').toArray(), []) ?? []
 
+  // Bei neuen Terminen den eigenen, per "Das bin ich" markierten Betreuer vorauswählen
+  // (siehe CaretakersSection.tsx) statt einfach den ersten in der Liste.
+  const myCaretakerId = caretakers.find((c) => c.userId === session?.user.id)?.id
+
   const [timeSlotId, setTimeSlotId] = useState(entry?.timeSlotId ?? '')
-  const [caretakerId, setCaretakerId] = useState(entry?.caretakerId ?? caretakers[0]?.id ?? '')
+  const [caretakerId, setCaretakerId] = useState(entry?.caretakerId ?? myCaretakerId ?? caretakers[0]?.id ?? '')
   const [tasks, setTasks] = useState<CareTaskState[] | null>(entry?.tasks ?? null)
   const [note, setNote] = useState(entry?.note ?? '')
   const [newTask, setNewTask] = useState('')
