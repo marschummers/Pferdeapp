@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import type { EntityTable } from 'dexie'
 import { getCurrentHorseId, newId } from '../db/db'
+import { useActiveHorse } from '../lib/activeHorse'
 
 interface Def {
   id: string
@@ -22,7 +23,12 @@ interface Props {
 // Verwaltet eine sortierbare Liste einfacher Stammdaten-Einträge (Label + Reihenfolge).
 // Wird sowohl für Aufgaben als auch für Zeitfenster verwendet, da beide dieselbe Form haben.
 export default function OrderedDefList({ table, placeholder, emptyHint, deleteConfirm }: Props) {
-  const items = useLiveQuery(() => table.orderBy('order').filter((i) => !i.deletedAt).toArray(), [table]) ?? []
+  const { activeHorseId } = useActiveHorse()
+  const items =
+    useLiveQuery(
+      () => table.orderBy('order').filter((i) => i.horseId === activeHorseId && !i.deletedAt).toArray(),
+      [table, activeHorseId],
+    ) ?? []
   const [newLabel, setNewLabel] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingLabel, setEditingLabel] = useState('')

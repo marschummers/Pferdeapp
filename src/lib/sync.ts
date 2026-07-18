@@ -127,7 +127,7 @@ export async function syncAll(): Promise<void> {
     db.horses,
     'horses',
     (h) => ({ id: h.id, name: h.name, owner_id: ownerId, updated_at: iso(h.updatedAt) }),
-    (r) => ({ id: r.id, name: r.name, updatedAt: ms(r.updated_at) }),
+    (r) => ({ id: r.id, name: r.name, ownerId: r.owner_id, updatedAt: ms(r.updated_at) }),
   )
 
   await mergeTable<Caretaker, RemoteCaretaker>(

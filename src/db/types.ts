@@ -1,11 +1,13 @@
-// Ein Pferd. Grundlage für das kommende Mehrbenutzer-Sync-Konzept: Betreuer:innen,
-// Aufgaben, Zeitfenster und Termine gehören jeweils zu genau einem Pferd. Auf einem Gerät
-// ist aktuell immer nur ein Pferd aktiv (siehe getCurrentHorseId in db.ts) – ein Umschalter
-// zwischen mehreren Pferden ist ein bewusst zurückgestellter nächster Schritt.
+// Ein Pferd. Betreuer:innen, Aufgaben, Zeitfenster und Termine gehören jeweils zu genau einem
+// Pferd; welches davon gerade aktiv angezeigt wird, steuert src/lib/activeHorse.tsx.
+// `ownerId` (Supabase auth.uid() des Besitzers, von lib/sync.ts beim Pull mitgeliefert) ist
+// optional, weil ein frisch lokal angelegtes, noch nie synchronisiertes Pferd ihn noch nicht
+// kennt – dient nur dazu, im Umschalter das eigene Pferd zuerst zu zeigen.
 export interface Horse {
   id: string;
   name: string;
   updatedAt: number;
+  ownerId?: string;
 }
 
 // Eine Person, die sich um das Pferd kümmern kann (z.B. Besitzerin, Reitbeteiligung, Stallnachbarin).

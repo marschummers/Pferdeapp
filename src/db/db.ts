@@ -106,19 +106,21 @@ export function newId(): string {
   return crypto.randomUUID();
 }
 
-const CURRENT_HORSE_ID_KEY = 'stallplaner-current-horse-id';
+// Exportiert (statt nur modul-intern), damit src/lib/activeHorse.tsx denselben Key liest/
+// schreibt wie die Funktionen hier – Umschalten im UI und Anlegen neuer Zeilen (die weiterhin
+// über getCurrentHorseId laufen) müssen immer auf demselben aktiven Pferd landen.
+export const CURRENT_HORSE_ID_KEY = 'stallplaner-current-horse-id';
 
-// Liefert die id des aktuell aktiven Pferds. Auf einem Gerät existiert lokal bislang immer
-// genau ein Pferd (siehe Horse in types.ts) – ein Umschalter zwischen mehreren ist ein
-// zurückgestellter nächster Schritt. Bewusst async statt rein über localStorage gelöst, damit
-// kein Aufruf vor Abschluss von populate/upgrade ins Leere laufen kann: Dexie stellt sicher,
-// dass diese Abfrage erst aufgelöst wird, nachdem die Datenbank vollständig geöffnet ist.
+// Liefert die id des aktuell aktiven Pferds (das, dessen Wochenplan/Betreuer:innen/Aufgaben/
+// Zeitfenster gerade angezeigt werden bzw. in das neue Zeilen einsortiert werden). Bewusst
+// async statt rein synchron über localStorage gelöst, damit kein Aufruf vor Abschluss von
+// populate/upgrade ins Leere laufen kann: Dexie stellt sicher, dass diese Abfrage erst
+// aufgelöst wird, nachdem die Datenbank vollständig geöffnet ist.
 //
-// Das Ergebnis wird trotzdem in localStorage "angepinnt": sobald der Supabase-Sync (siehe
-// lib/sync.ts) erlaubt, dass über horse_members auch fremde Pferde lokal landen, wäre
-// db.horses.toCollection().first() sonst mehrdeutig und könnte nach einem Sync plötzlich ein
-// anderes Pferd als "aktiv" liefern als vorher. Vollständige Isolation mehrerer lokaler Pferde
-// (Lese-Queries nach horseId filtern) ist weiterhin Teil des zurückgestellten Umschalter-Schritts.
+// Das Ergebnis wird in localStorage gemerkt und beim Umschalten über setCurrentHorseId (siehe
+// src/lib/activeHorse.tsx, dort als setActiveHorseId genutzt) aktualisiert – ohne explizite
+// Auswahl fällt es auf das erste bekannte Pferd zurück, sobald über Supabase-Sync/horse_members
+// mehr als eins lokal existiert.
 export async function getCurrentHorseId(): Promise<string> {
   const cached = localStorage.getItem(CURRENT_HORSE_ID_KEY);
   if (cached) return cached;
@@ -126,6 +128,10 @@ export async function getCurrentHorseId(): Promise<string> {
   if (!horse) throw new Error('Kein Pferd vorhanden');
   localStorage.setItem(CURRENT_HORSE_ID_KEY, horse.id);
   return horse.id;
+}
+
+export function setCurrentHorseId(horseId: string): void {
+  localStorage.setItem(CURRENT_HORSE_ID_KEY, horseId);
 }
 
 // Legt einen Gewichts-Eintrag für einen Tag an oder überschreibt den bestehenden

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, getCurrentHorseId, newId } from '../../db/db'
+import { useActiveHorse } from '../../lib/activeHorse'
 
 const COLOR_CHOICES = [
   '#b5793a', // Sattelbraun
@@ -14,7 +15,11 @@ const COLOR_CHOICES = [
 ]
 
 export default function CaretakersSection() {
-  const caretakers = useLiveQuery(() => db.caretakers.orderBy('name').filter((c) => !c.deletedAt).toArray(), [])
+  const { activeHorseId } = useActiveHorse()
+  const caretakers = useLiveQuery(
+    () => db.caretakers.orderBy('name').filter((c) => c.horseId === activeHorseId && !c.deletedAt).toArray(),
+    [activeHorseId],
+  )
   const [name, setName] = useState('')
   const [color, setColor] = useState(COLOR_CHOICES[0])
   const [editingId, setEditingId] = useState<string | null>(null)

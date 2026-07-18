@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import type { CareEntry, CareTaskState, Caretaker } from '../db/types'
 import { db, getCurrentHorseId, newId } from '../db/db'
+import { useActiveHorse } from '../lib/activeHorse'
 
 interface Props {
   dateStr: string
@@ -11,9 +12,17 @@ interface Props {
 }
 
 export default function CareEntryForm({ dateStr, caretakers, entry, onClose }: Props) {
+  const { activeHorseId } = useActiveHorse()
   const timeSlotDefs =
-    useLiveQuery(() => db.timeSlotDefs.orderBy('order').filter((t) => !t.deletedAt).toArray(), []) ?? []
-  const taskDefs = useLiveQuery(() => db.taskDefs.orderBy('order').filter((t) => !t.deletedAt).toArray(), []) ?? []
+    useLiveQuery(
+      () => db.timeSlotDefs.orderBy('order').filter((t) => t.horseId === activeHorseId && !t.deletedAt).toArray(),
+      [activeHorseId],
+    ) ?? []
+  const taskDefs =
+    useLiveQuery(
+      () => db.taskDefs.orderBy('order').filter((t) => t.horseId === activeHorseId && !t.deletedAt).toArray(),
+      [activeHorseId],
+    ) ?? []
   const meals = useLiveQuery(() => db.meals.orderBy('name').toArray(), []) ?? []
 
   const [timeSlotId, setTimeSlotId] = useState(entry?.timeSlotId ?? '')

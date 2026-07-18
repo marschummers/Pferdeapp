@@ -4,7 +4,9 @@ import { Link } from 'react-router-dom'
 import { db } from '../db/db'
 import type { CareEntry, Caretaker, Meal, TimeSlotDef } from '../db/types'
 import { addDays, formatDayLabel, formatWeekRange, startOfWeek, toDateStr, todayStr, weekDates } from '../lib/date'
+import { useActiveHorse } from '../lib/activeHorse'
 import CareEntryForm from '../components/CareEntryForm'
+import HorseSwitcher from '../components/HorseSwitcher'
 
 function EntryCard({
   entry,
@@ -67,33 +69,78 @@ function EntryCard({
 }
 
 export default function WeekPage() {
+  const { horses, activeHorseId, setActiveHorseId } = useActiveHorse()
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()))
   const [formTarget, setFormTarget] = useState<{ dateStr: string; entry?: CareEntry } | null>(null)
 
   const days = weekDates(weekStart)
   const dateStrs = days.map(toDateStr)
   const dateStrsKey = dateStrs.join(',')
+  const today = todayStr()
 
   const caretakers =
-    useLiveQuery(() => db.caretakers.orderBy('name').filter((c) => !c.deletedAt).toArray(), []) ?? []
+    useLiveQuery(
+      () => db.caretakers.orderBy('name').filter((c) => c.horseId === activeHorseId && !c.deletedAt).toArray(),
+      [activeHorseId],
+    ) ?? []
   const timeSlotDefs =
-    useLiveQuery(() => db.timeSlotDefs.orderBy('order').filter((t) => !t.deletedAt).toArray(), []) ?? []
+    useLiveQuery(
+      () => db.timeSlotDefs.orderBy('order').filter((t) => t.horseId === activeHorseId && !t.deletedAt).toArray(),
+      [activeHorseId],
+    ) ?? []
   const meals = useLiveQuery(() => db.meals.toArray(), []) ?? []
   const entries =
     useLiveQuery(
-      () => db.careEntries.where('dateStr').anyOf(dateStrs).filter((e) => !e.deletedAt).toArray(),
-      [dateStrsKey],
+      () =>
+        db.careEntries
+          .where('dateStr')
+          .anyOf(dateStrs)
+          .filter((e) => e.horseId === activeHorseId && !e.deletedAt)
+          .toArray(),
+      [dateStrsKey, activeHorseId],
+    ) ?? []
+
+  // Für den Hinweis unten: offene Aufgaben heute bei *anderen* Pferden, zu denen man ebenfalls
+  // Zugriff hat (z.B. über horse_members) – unabhängig von der gerade gewählten Kalenderwoche.
+  const otherHorseEntriesToday =
+    useLiveQuery(
+      () =>
+        db.careEntries
+          .where('dateStr')
+          .equals(today)
+          .filter((e) => e.horseId !== activeHorseId && !e.deletedAt && e.tasks.some((t) => !t.done))
+          .toArray(),
+      [activeHorseId, today],
     ) ?? []
 
   const caretakerById = new Map(caretakers.map((c) => [c.id, c]))
   const timeSlotById = new Map(timeSlotDefs.map((s) => [s.id, s]))
   const timeSlotOrder = new Map(timeSlotDefs.map((s) => [s.id, s.order]))
   const mealById = new Map(meals.map((m) => [m.id, m]))
-  const today = todayStr()
+  const horseNameById = new Map(horses.map((h) => [h.id, h.name]))
+
+  const openTaskCountByHorse = new Map<string, number>()
+  for (const entry of otherHorseEntriesToday) {
+    const openCount = entry.tasks.filter((t) => !t.done).length
+    openTaskCountByHorse.set(entry.horseId, (openTaskCountByHorse.get(entry.horseId) ?? 0) + openCount)
+  }
 
   return (
     <div>
       <h1>Wochenplan</h1>
+
+      <HorseSwitcher />
+
+      {openTaskCountByHorse.size > 0 && (
+        <div className="cross-horse-hint">
+          {[...openTaskCountByHorse.entries()].map(([horseId, count]) => (
+            <button key={horseId} className="cross-horse-hint-item" onClick={() => setActiveHorseId(horseId)}>
+              Heute noch offen bei <strong>{horseNameById.get(horseId) ?? '…'}</strong>: {count}{' '}
+              {count === 1 ? 'Aufgabe' : 'Aufgaben'}
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="week-nav">
         <button onClick={() => setWeekStart((w) => addDays(w, -7))} aria-label="Vorherige Woche">
