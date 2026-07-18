@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import type { CareEntry, CareTaskState, Caretaker } from '../db/types'
-import { db, newId } from '../db/db'
+import { db, getCurrentHorseId, newId } from '../db/db'
 
 interface Props {
   dateStr: string
@@ -73,16 +73,20 @@ export default function CareEntryForm({ dateStr, caretakers, entry, onClose }: P
         tasks: effectiveTasks,
         note: note.trim() || undefined,
         mealId: mealId || undefined,
+        updatedAt: Date.now(),
       })
     } else {
+      const horseId = await getCurrentHorseId()
       await db.careEntries.add({
         id: newId(),
+        horseId,
         dateStr,
         timeSlotId: effectiveTimeSlotId,
         caretakerId,
         tasks: effectiveTasks,
         note: note.trim() || undefined,
         mealId: mealId || undefined,
+        updatedAt: Date.now(),
       })
     }
     onClose()

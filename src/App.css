@@ -8,6 +8,42 @@
   position: relative;
 }
 
+.auth-loading {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim);
+}
+
+.login-screen {
+  max-width: 480px;
+  margin: 0 auto;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 1.5rem;
+}
+
+.login-screen h1 {
+  margin-bottom: 1.5rem;
+}
+
+.login-panel {
+  margin-bottom: 0;
+}
+
+.login-panel strong {
+  color: var(--accent-strong);
+}
+
+.login-error {
+  color: var(--danger);
+  font-size: 0.85rem;
+  margin: -0.3rem 0 0.7rem;
+}
+
 .app-content {
   flex: 1;
   display: flex;

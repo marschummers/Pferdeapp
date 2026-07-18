@@ -1,17 +1,30 @@
+// Ein Pferd. Grundlage für das kommende Mehrbenutzer-Sync-Konzept: Betreuer:innen,
+// Aufgaben, Zeitfenster und Termine gehören jeweils zu genau einem Pferd. Auf einem Gerät
+// ist aktuell immer nur ein Pferd aktiv (siehe getCurrentHorseId in db.ts) – ein Umschalter
+// zwischen mehreren Pferden ist ein bewusst zurückgestellter nächster Schritt.
+export interface Horse {
+  id: string;
+  name: string;
+}
+
 // Eine Person, die sich um das Pferd kümmern kann (z.B. Besitzerin, Reitbeteiligung, Stallnachbarin).
 export interface Caretaker {
   id: string;
+  horseId: string;
   name: string;
   // Hex-Farbe zur schnellen visuellen Unterscheidung im Wochenplan.
   color: string;
+  updatedAt: number;
 }
 
 // Ein wählbares Zeitfenster (z.B. "Morgens"), frei in der Verwaltung gepflegt.
 // `order` bestimmt die Reihenfolge in Auswahllisten und im Wochenplan.
 export interface TimeSlotDef {
   id: string;
+  horseId: string;
   label: string;
   order: number;
+  updatedAt: number;
 }
 
 // Eine wählbare Aufgabe (z.B. "Füttern"), frei in der Verwaltung gepflegt.
@@ -19,8 +32,10 @@ export interface TimeSlotDef {
 // trotzdem frei ergänzt/entfernt werden, ohne die Stammdaten zu ändern.
 export interface TaskDef {
   id: string;
+  horseId: string;
   label: string;
   order: number;
+  updatedAt: number;
 }
 
 export interface CareTaskState {
@@ -35,6 +50,7 @@ export interface CareTaskState {
 // abgezogen wurden (siehe lib/stock.ts) – verhindert doppelten Abzug bei jedem App-Start.
 export interface CareEntry {
   id: string;
+  horseId: string;
   dateStr: string; // 'YYYY-MM-DD'
   timeSlotId: string;
   caretakerId: string;
@@ -42,6 +58,7 @@ export interface CareEntry {
   note?: string;
   mealId?: string;
   mealDeductedAt?: number;
+  updatedAt: number;
 }
 
 // Eine Zutat als Grunddatum (z.B. "Heucobs"), einmal angelegt und in beliebig vielen

@@ -1,12 +1,14 @@
 import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import type { EntityTable } from 'dexie'
-import { newId } from '../db/db'
+import { getCurrentHorseId, newId } from '../db/db'
 
 interface Def {
   id: string
+  horseId: string
   label: string
   order: number
+  updatedAt: number
 }
 
 interface Props {
@@ -28,7 +30,8 @@ export default function OrderedDefList({ table, placeholder, emptyHint, deleteCo
     const label = newLabel.trim()
     if (!label) return
     const maxOrder = items.reduce((max, i) => Math.max(max, i.order), -1)
-    await table.add({ id: newId(), label, order: maxOrder + 1 })
+    const horseId = await getCurrentHorseId()
+    await table.add({ id: newId(), horseId, label, order: maxOrder + 1, updatedAt: Date.now() })
     setNewLabel('')
   }
 
@@ -40,7 +43,7 @@ export default function OrderedDefList({ table, placeholder, emptyHint, deleteCo
   async function saveEdit() {
     const label = editingLabel.trim()
     if (!editingId || !label) return
-    await table.update(editingId, { label })
+    await table.update(editingId, { label, updatedAt: Date.now() })
     setEditingId(null)
   }
 
@@ -54,8 +57,9 @@ export default function OrderedDefList({ table, placeholder, emptyHint, deleteCo
     if (otherIndex < 0 || otherIndex >= items.length) return
     const a = items[index]
     const b = items[otherIndex]
-    await table.update(a.id, { order: b.order })
-    await table.update(b.id, { order: a.order })
+    const now = Date.now()
+    await table.update(a.id, { order: b.order, updatedAt: now })
+    await table.update(b.id, { order: a.order, updatedAt: now })
   }
 
   return (

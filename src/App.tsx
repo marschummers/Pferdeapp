@@ -8,15 +8,13 @@ import WeightHistoryPage from './pages/WeightHistoryPage'
 import HealthCategoryPage from './pages/HealthCategoryPage'
 import StockPage from './pages/StockPage'
 import ManagementPage from './pages/ManagementPage'
+import LoginPage from './pages/LoginPage'
 import NavIcon from './components/NavIcon'
 import { applyPendingStockDeductions } from './lib/stock'
+import { useAuth } from './lib/auth'
 import './App.css'
 
-function App() {
-  useEffect(() => {
-    applyPendingStockDeductions()
-  }, [])
-
+function AppShell() {
   return (
     <div className="app">
       <main className="app-content">
@@ -57,6 +55,31 @@ function App() {
       </nav>
     </div>
   )
+}
+
+function App() {
+  const { configured, loading, session } = useAuth()
+
+  useEffect(() => {
+    applyPendingStockDeductions()
+  }, [])
+
+  // Ohne Supabase-Konfiguration (z.B. lokal ohne .env.local, oder solange der Nutzer sein
+  // Projekt noch nicht angelegt hat) bleibt die App wie bisher rein lokal nutzbar – erst
+  // sobald Supabase konfiguriert ist, greift das Login.
+  if (!configured) return <AppShell />
+
+  if (loading) {
+    return (
+      <div className="app">
+        <div className="auth-loading">Lädt…</div>
+      </div>
+    )
+  }
+
+  if (!session) return <LoginPage />
+
+  return <AppShell />
 }
 
 export default App

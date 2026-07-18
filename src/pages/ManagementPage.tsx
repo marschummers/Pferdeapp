@@ -1,19 +1,23 @@
 import { useState } from 'react'
 import { db } from '../db/db'
+import HorseSection from './management/HorseSection'
 import CaretakersSection from './management/CaretakersSection'
 import IngredientsSection from './management/IngredientsSection'
 import OrderedDefList from '../components/OrderedDefList'
 
-type Tab = 'betreuer' | 'aufgaben' | 'zeitfenster' | 'zutaten'
+type Tab = 'pferd' | 'betreuer' | 'aufgaben' | 'zeitfenster' | 'zutaten'
 
 export default function ManagementPage() {
-  const [tab, setTab] = useState<Tab>('betreuer')
+  const [tab, setTab] = useState<Tab>('pferd')
 
   return (
     <div>
       <h1>Verwaltung</h1>
 
       <div className="sub-tabs">
+        <button className={tab === 'pferd' ? 'active' : ''} onClick={() => setTab('pferd')}>
+          Pferd
+        </button>
         <button className={tab === 'betreuer' ? 'active' : ''} onClick={() => setTab('betreuer')}>
           Betreuer:innen
         </button>
@@ -27,6 +31,8 @@ export default function ManagementPage() {
           Zutaten
         </button>
       </div>
+
+      {tab === 'pferd' && <HorseSection />}
 
       {tab === 'betreuer' && <CaretakersSection />}
 

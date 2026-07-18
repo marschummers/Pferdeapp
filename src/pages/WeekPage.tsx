@@ -21,7 +21,7 @@ function EntryCard({
 }) {
   async function toggleTask(index: number) {
     const updated = entry.tasks.map((t, i) => (i === index ? { ...t, done: !t.done } : t))
-    await db.careEntries.update(entry.id, { tasks: updated })
+    await db.careEntries.update(entry.id, { tasks: updated, updatedAt: Date.now() })
   }
 
   const doneCount = entry.tasks.filter((t) => t.done).length

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db, newId } from '../../db/db'
+import { db, getCurrentHorseId, newId } from '../../db/db'
 
 const COLOR_CHOICES = [
   '#b5793a', // Sattelbraun
@@ -35,9 +35,10 @@ export default function CaretakersSection() {
     const trimmed = name.trim()
     if (!trimmed) return
     if (editingId) {
-      await db.caretakers.update(editingId, { name: trimmed, color })
+      await db.caretakers.update(editingId, { name: trimmed, color, updatedAt: Date.now() })
     } else {
-      await db.caretakers.add({ id: newId(), name: trimmed, color })
+      const horseId = await getCurrentHorseId()
+      await db.caretakers.add({ id: newId(), horseId, name: trimmed, color, updatedAt: Date.now() })
     }
     resetForm()
   }
