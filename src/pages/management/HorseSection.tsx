@@ -4,7 +4,7 @@ import { useActiveHorse } from '../../lib/activeHorse'
 import type { Horse } from '../../db/types'
 
 export default function HorseSection() {
-  const { horses, activeHorseId } = useActiveHorse()
+  const { horses, activeHorseId, setActiveHorseId } = useActiveHorse()
 
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingName, setEditingName] = useState('')
@@ -65,36 +65,49 @@ export default function HorseSection() {
       <div className="card-list">
         {horses.map((horse) => (
           <div className="horse-manage-card" key={horse.id}>
-            {editingId === horse.id ? (
-              <>
-                <input
-                  value={editingName}
-                  onChange={(e) => setEditingName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault()
-                      saveEdit()
-                    }
-                  }}
-                  autoFocus
-                />
-                <button className="icon-button" onClick={saveEdit} aria-label="Speichern">
-                  ✓
-                </button>
-              </>
-            ) : (
-              <>
-                <span className="horse-manage-name">
-                  🐴 {horse.name}
-                  {horse.id === activeHorseId && <span className="horse-manage-active-badge">aktiv</span>}
-                </span>
-                <button className="icon-button" onClick={() => startEdit(horse)} aria-label="Umbenennen">
-                  ✎
-                </button>
-                <button className="icon-button" onClick={() => startDelete(horse)} aria-label="Löschen">
-                  ✕
-                </button>
-              </>
+            <div className="horse-manage-card-row">
+              {editingId === horse.id ? (
+                <>
+                  <input
+                    value={editingName}
+                    onChange={(e) => setEditingName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        saveEdit()
+                      }
+                    }}
+                    autoFocus
+                  />
+                  <button className="icon-button" onClick={saveEdit} aria-label="Speichern">
+                    ✓
+                  </button>
+                </>
+              ) : (
+                <>
+                  <span className="horse-manage-name">
+                    🐴 {horse.name}
+                    {horse.id === activeHorseId && <span className="horse-manage-active-badge">aktiv</span>}
+                  </span>
+                  <button className="icon-button" onClick={() => startEdit(horse)} aria-label="Umbenennen">
+                    ✎
+                  </button>
+                  <button className="icon-button" onClick={() => startDelete(horse)} aria-label="Löschen">
+                    ✕
+                  </button>
+                </>
+              )}
+            </div>
+            {/* Bewusst kein Ein-Klick-Umschalter auf der Hauptseite – welches Pferd auf diesem
+                Gerät "aktiv" ist (bestimmt u.a., wo neue Termine landen), wechselt nur hier
+                über einen expliziten Button. */}
+            {horse.id !== activeHorseId && editingId !== horse.id && (
+              <button
+                className="secondary-button horse-activate-button"
+                onClick={() => setActiveHorseId(horse.id)}
+              >
+                Für dieses Gerät verwenden
+              </button>
             )}
           </div>
         ))}

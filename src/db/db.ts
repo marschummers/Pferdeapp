@@ -11,6 +11,12 @@ import type {
   WeightEntry,
 } from './types';
 
+// Name, mit dem ein frisch angelegtes Pferd startet (siehe db.on('populate') und
+// version(2).upgrade() unten) – dient auch lib/sync.ts als Erkennungsmerkmal für "noch nie
+// umbenannt", um vor dem ersten Sync eine klare Fehlermeldung statt eines stillen Zustands mit
+// unauffindbarem Pferdenamen zu zeigen.
+export const DEFAULT_HORSE_NAME = 'Mein Pferd';
+
 export const db = new Dexie('stallplaner') as Dexie & {
   horses: EntityTable<Horse, 'id'>;
   caretakers: EntityTable<Caretaker, 'id'>;
@@ -50,7 +56,7 @@ db.version(2)
   .upgrade(async (tx) => {
     const horseId = newId();
     const now = Date.now();
-    await tx.table('horses').add({ id: horseId, name: 'Mein Pferd', updatedAt: now });
+    await tx.table('horses').add({ id: horseId, name: DEFAULT_HORSE_NAME, updatedAt: now });
     for (const tableName of ['caretakers', 'careEntries', 'taskDefs', 'timeSlotDefs']) {
       await tx
         .table(tableName)
@@ -84,7 +90,7 @@ db.version(3).upgrade(async (tx) => {
 db.on('populate', () => {
   const horseId = newId();
   const now = Date.now();
-  db.horses.add({ id: horseId, name: 'Mein Pferd', updatedAt: now });
+  db.horses.add({ id: horseId, name: DEFAULT_HORSE_NAME, updatedAt: now });
 
   const defaultTimeSlots: TimeSlotDef[] = [
     { id: newId(), horseId, label: 'Morgens', order: 0, updatedAt: now },

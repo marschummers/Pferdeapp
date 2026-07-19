@@ -1,5 +1,5 @@
 import type { EntityTable } from 'dexie'
-import { db } from '../db/db'
+import { db, DEFAULT_HORSE_NAME } from '../db/db'
 import type { Caretaker, CareEntry, Horse, TaskDef, TimeSlotDef } from '../db/types'
 import { supabase } from './supabaseClient'
 
@@ -122,6 +122,28 @@ export async function syncAll(): Promise<void> {
   const { data: userData, error: userError } = await supabase.auth.getUser()
   if (userError || !userData.user) throw new Error('Nicht eingeloggt.')
   const ownerId = userData.user.id
+
+  // Vor dem allerersten Sync eines Pferds prüfen, dass es einen echten Namen hat und man sich
+  // selbst als Betreuer:in markiert hat (Stern, siehe CaretakersSection.tsx) – sonst sehen die
+  // anderen nach dem Sync niemanden, dem sie Aufgaben zuweisen können. Nur für Pferde relevant,
+  // die noch nie synchronisiert wurden (ownerId hier lokal noch unbekannt); ein bereits
+  // synchronisiertes Pferd hatte diese Hürde beim allerersten Mal schon zu nehmen.
+  const unsyncedOwnHorses = await db.horses.filter((h) => !h.deletedAt && h.ownerId === undefined).toArray()
+  for (const horse of unsyncedOwnHorses) {
+    const trimmedName = horse.name.trim()
+    if (!trimmedName || trimmedName === DEFAULT_HORSE_NAME) {
+      throw new Error(
+        `Bitte vergib zuerst einen echten Namen für "${horse.name}" (Verwaltung → Pferd), bevor du synchronisierst.`,
+      )
+    }
+    const hasSelfCaretaker =
+      (await db.caretakers.filter((c) => c.horseId === horse.id && !c.deletedAt && c.userId === ownerId).count()) > 0
+    if (!hasSelfCaretaker) {
+      throw new Error(
+        `Markiere dich zuerst selbst mit dem Stern als Betreuer:in bei "${horse.name}" (Verwaltung → Betreuer:innen), bevor du synchronisierst.`,
+      )
+    }
+  }
 
   // Pferd zuerst: caretakers/task_defs/time_slot_defs/care_entries referenzieren horse_id als
   // Fremdschlüssel in Supabase, die Zeile muss also dort existieren, bevor die anderen pushen.

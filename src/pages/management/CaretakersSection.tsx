@@ -45,7 +45,18 @@ export default function CaretakersSection() {
       await db.caretakers.update(editingId, { name: trimmed, color, updatedAt: Date.now() })
     } else {
       const horseId = await getCurrentHorseId()
-      await db.caretakers.add({ id: newId(), horseId, name: trimmed, color, updatedAt: Date.now() })
+      // Die erste Person, die für ein Pferd angelegt wird, ist so gut wie immer man selbst –
+      // automatisch mit "Das bin ich" verknüpfen (siehe handleToggleMe), statt das per Stern
+      // separat erledigen zu müssen. Bleibt danach normal togglebar/entfernbar.
+      const isFirstCaretaker = (caretakers?.length ?? 0) === 0
+      await db.caretakers.add({
+        id: newId(),
+        horseId,
+        name: trimmed,
+        color,
+        updatedAt: Date.now(),
+        ...(isFirstCaretaker && session ? { userId: session.user.id } : {}),
+      })
     }
     resetForm()
   }
@@ -68,12 +79,16 @@ export default function CaretakersSection() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm('Betreuer:in löschen? Zugehörige Plan-Einträge werden ebenfalls entfernt.')) return
+    if (!confirm('Betreuer:in löschen? Zugehörige Plan-Einträge auf diesem Pferd werden ebenfalls entfernt.')) return
     // Weiches Löschen statt Entfernen, damit es beim Supabase-Sync mitläuft (lib/sync.ts).
     const now = Date.now()
+    // Nur Termine AUF DIESEM Pferd mitlöschen: seit der Cross-Pferd-Zuweisung (WeekPage.tsx)
+    // können auch andere Pferde auf diese Betreuer-Zeile verweisen – solche Termine sollen
+    // erhalten bleiben (zeigen dann "(gelöscht)" als Namen, siehe EntryCard).
     await db.careEntries
       .where('caretakerId')
       .equals(id)
+      .and((e) => e.horseId === activeHorseId)
       .modify({ deletedAt: now, updatedAt: now })
     await db.caretakers.update(id, { deletedAt: now, updatedAt: now })
     if (editingId === id) resetForm()

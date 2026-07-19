@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { Link } from 'react-router-dom'
 import { db } from '../db/db'
@@ -7,7 +7,6 @@ import { addDays, formatDayLabel, formatWeekRange, startOfWeek, toDateStr, today
 import { useActiveHorse } from '../lib/activeHorse'
 import { useAuth } from '../lib/auth'
 import CareEntryForm from '../components/CareEntryForm'
-import HorseSwitcher from '../components/HorseSwitcher'
 
 function EntryCard({
   entry,
@@ -71,9 +70,19 @@ function EntryCard({
 
 export default function WeekPage() {
   const { session } = useAuth()
-  const { horses, activeHorseId, setActiveHorseId } = useActiveHorse()
+  const { horses, activeHorseId } = useActiveHorse()
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()))
   const [formTarget, setFormTarget] = useState<{ dateStr: string; entry?: CareEntry } | null>(null)
+
+  // Das gerade ANGEZEIGTE Pferd – i.d.R. gleich dem für dieses Gerät aktiven Pferd, kann aber
+  // über den Cross-Pferd-Hinweis unten auf ein anderes Pferd zeigen, OHNE das aktive Pferd zu
+  // wechseln (das bleibt Stammdaten/Fütterung/neuen Terminen an anderer Stelle vorbehalten und
+  // wechselt nur bewusst über Verwaltung → Pferd). Springt zurück auf activeHorseId, sobald sich
+  // das "echte" aktive Pferd ändert (z.B. nach einem bewussten Wechsel in der Verwaltung).
+  const [viewedHorseId, setViewedHorseId] = useState(activeHorseId)
+  useEffect(() => {
+    setViewedHorseId(activeHorseId)
+  }, [activeHorseId])
 
   const days = weekDates(weekStart)
   const dateStrs = days.map(toDateStr)
@@ -82,13 +91,16 @@ export default function WeekPage() {
 
   const caretakers =
     useLiveQuery(
-      () => db.caretakers.orderBy('name').filter((c) => c.horseId === activeHorseId && !c.deletedAt).toArray(),
-      [activeHorseId],
+      () => db.caretakers.orderBy('name').filter((c) => c.horseId === viewedHorseId && !c.deletedAt).toArray(),
+      [viewedHorseId],
     ) ?? []
+  // Über alle Pferde hinweg, für die Cross-Pferd-Zuweisung (siehe otherCaretakers unten) und
+  // damit EntryCard auch Betreuer:innen anderer Pferde anzeigen kann.
+  const allCaretakers = useLiveQuery(() => db.caretakers.filter((c) => !c.deletedAt).toArray(), []) ?? []
   const timeSlotDefs =
     useLiveQuery(
-      () => db.timeSlotDefs.orderBy('order').filter((t) => t.horseId === activeHorseId && !t.deletedAt).toArray(),
-      [activeHorseId],
+      () => db.timeSlotDefs.orderBy('order').filter((t) => t.horseId === viewedHorseId && !t.deletedAt).toArray(),
+      [viewedHorseId],
     ) ?? []
   const meals = useLiveQuery(() => db.meals.toArray(), []) ?? []
   const entries =
@@ -97,9 +109,9 @@ export default function WeekPage() {
         db.careEntries
           .where('dateStr')
           .anyOf(dateStrs)
-          .filter((e) => e.horseId === activeHorseId && !e.deletedAt)
+          .filter((e) => e.horseId === viewedHorseId && !e.deletedAt)
           .toArray(),
-      [dateStrsKey, activeHorseId],
+      [dateStrsKey, viewedHorseId],
     ) ?? []
 
   // Betreuer:innen-Zeilen (über alle Pferde hinweg), die mit dem eigenen Account verknüpft sind
@@ -120,9 +132,11 @@ export default function WeekPage() {
     .sort()
     .join(',')
 
-  // Für den Hinweis unten: offene Aufgaben heute bei *anderen* Pferden, die einem mit dem
-  // eigenen Account verknüpften Betreuer zugeordnet sind – nicht jede offene Aufgabe irgendeiner
-  // Person bei irgendeinem anderen Pferd.
+  // Für den Hinweis unten: offene Aufgaben heute bei Pferden AUSSER dem gerade angezeigten, die
+  // einem mit dem eigenen Account verknüpften Betreuer zugeordnet sind – nicht jede offene
+  // Aufgabe irgendeiner Person bei irgendeinem anderen Pferd. Bezieht sich bewusst auf
+  // viewedHorseId statt activeHorseId: schaut man sich (nach Antippen eines Hinweises) den
+  // Kalender eines anderen Pferds schon an, braucht es dafür keinen weiteren Hinweis mehr.
   const otherHorseEntriesToday =
     useLiveQuery(
       () =>
@@ -131,20 +145,51 @@ export default function WeekPage() {
           .equals(today)
           .filter(
             (e) =>
-              e.horseId !== activeHorseId &&
+              e.horseId !== viewedHorseId &&
               !e.deletedAt &&
               myCaretakerIds.some((c) => c.id === e.caretakerId) &&
               e.tasks.some((t) => !t.done),
           )
           .toArray(),
-      [activeHorseId, today, myCaretakerIdsKey],
+      [viewedHorseId, today, myCaretakerIdsKey],
     ) ?? []
 
-  const caretakerById = new Map(caretakers.map((c) => [c.id, c]))
+  // Vor der ersten DB-Auflösung (siehe getCurrentHorseId in db.ts) ist noch kein Pferd bekannt –
+  // erst ab hier (nach allen Hooks) darf viewedHorseId als sicher vorhanden behandelt werden.
+  if (!activeHorseId || !viewedHorseId) {
+    return (
+      <div>
+        <h1>Wochenplan</h1>
+        <p className="hint">Lädt…</p>
+      </div>
+    )
+  }
+
+  // Betreuer:innen anderer angemeldeter Accounts (nicht des angezeigten Pferds), damit man auch
+  // vom eigenen Kalender aus Aufgaben an andere Personen vergeben kann (CareEntryForm) – eine
+  // Zeile pro Person reicht als Referenz, auch wenn jemand auf mehreren Pferden verknüpft ist.
+  const otherCaretakers = (() => {
+    const byUserId = new Map<string, Caretaker>()
+    for (const c of allCaretakers) {
+      if (!c.userId || c.userId === session?.user.id || c.horseId === viewedHorseId) continue
+      if (!byUserId.has(c.userId)) byUserId.set(c.userId, c)
+    }
+    return [...byUserId.values()].sort((a, b) => a.name.localeCompare(b.name))
+  })()
+
+  const caretakerById = new Map(allCaretakers.map((c) => [c.id, c]))
   const timeSlotById = new Map(timeSlotDefs.map((s) => [s.id, s]))
   const timeSlotOrder = new Map(timeSlotDefs.map((s) => [s.id, s.order]))
   const mealById = new Map(meals.map((m) => [m.id, m]))
   const horseNameById = new Map(horses.map((h) => [h.id, h.name]))
+  // Eigenes Pferd zuerst, Rest alphabetisch – für den Kalender-Picker unten, mit dem man sich
+  // (rein zum Nachschauen, ohne das aktive Pferd zu wechseln) den Kalender jedes Pferds ansehen
+  // kann, auf das man Zugriff hat.
+  const sortedHorses = [...horses].sort((a, b) => {
+    if (a.id === activeHorseId) return -1
+    if (b.id === activeHorseId) return 1
+    return a.name.localeCompare(b.name)
+  })
 
   const openTaskCountByHorse = new Map<string, number>()
   for (const entry of otherHorseEntriesToday) {
@@ -156,14 +201,31 @@ export default function WeekPage() {
     <div>
       <h1>Wochenplan</h1>
 
-      <HorseSwitcher />
-
       {openTaskCountByHorse.size > 0 && (
         <div className="cross-horse-hint">
           {[...openTaskCountByHorse.entries()].map(([horseId, count]) => (
-            <button key={horseId} className="cross-horse-hint-item" onClick={() => setActiveHorseId(horseId)}>
+            <button key={horseId} className="cross-horse-hint-item" onClick={() => setViewedHorseId(horseId)}>
               Heute noch offen bei <strong>{horseNameById.get(horseId) ?? '…'}</strong>: {count}{' '}
               {count === 1 ? 'Aufgabe' : 'Aufgaben'}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {sortedHorses.length > 1 && (
+        <div className="week-horse-picker">
+          {sortedHorses.map((horse) => (
+            <button
+              key={horse.id}
+              className={`week-horse-pill${horse.id === viewedHorseId ? ' active' : ''}`}
+              onClick={() => setViewedHorseId(horse.id)}
+            >
+              {horse.id === activeHorseId && (
+                <span className="week-horse-pill-home" title="Dein Pferd auf diesem Gerät">
+                  ★
+                </span>
+              )}
+              {horse.name}
             </button>
           ))}
         </div>
@@ -211,8 +273,10 @@ export default function WeekPage() {
                 formTarget?.entry?.id === entry.id ? (
                   <CareEntryForm
                     key={entry.id}
+                    horseId={viewedHorseId}
                     dateStr={dateStr}
                     caretakers={caretakers}
+                    otherCaretakers={otherCaretakers}
                     entry={entry}
                     onClose={() => setFormTarget(null)}
                   />
@@ -228,7 +292,13 @@ export default function WeekPage() {
                 ),
               )}
               {isNewFormOpenHere && (
-                <CareEntryForm dateStr={dateStr} caretakers={caretakers} onClose={() => setFormTarget(null)} />
+                <CareEntryForm
+                  horseId={viewedHorseId}
+                  dateStr={dateStr}
+                  caretakers={caretakers}
+                  otherCaretakers={otherCaretakers}
+                  onClose={() => setFormTarget(null)}
+                />
               )}
               {dayEntries.length === 0 && !isNewFormOpenHere && <p className="hint">Noch nichts geplant.</p>}
             </div>

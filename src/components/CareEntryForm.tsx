@@ -1,29 +1,35 @@
 import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import type { CareEntry, CareTaskState, Caretaker } from '../db/types'
-import { db, getCurrentHorseId, newId } from '../db/db'
-import { useActiveHorse } from '../lib/activeHorse'
+import { db, newId } from '../db/db'
 import { useAuth } from '../lib/auth'
 
 interface Props {
+  // Pferd, zu dem dieser Termin gehört – kommt von WeekPage.tsx als `viewedHorseId` (das
+  // gerade angesehene Pferd, nicht zwingend das für dieses Gerät aktive), damit man auch beim
+  // Ansehen eines fremden Kalenders (Cross-Pferd-Hinweis) dort korrekt Termine anlegen/bearbeiten
+  // kann, ohne das eigene aktive Pferd zu wechseln.
+  horseId: string
   dateStr: string
   caretakers: Caretaker[]
+  // Betreuer:innen anderer angemeldeter Accounts (nicht dieses Pferds), damit man auch vom
+  // eigenen Kalender aus Aufgaben an andere Personen vergeben kann – siehe WeekPage.tsx.
+  otherCaretakers: Caretaker[]
   entry?: CareEntry
   onClose: () => void
 }
 
-export default function CareEntryForm({ dateStr, caretakers, entry, onClose }: Props) {
+export default function CareEntryForm({ horseId, dateStr, caretakers, otherCaretakers, entry, onClose }: Props) {
   const { session } = useAuth()
-  const { activeHorseId } = useActiveHorse()
   const timeSlotDefs =
     useLiveQuery(
-      () => db.timeSlotDefs.orderBy('order').filter((t) => t.horseId === activeHorseId && !t.deletedAt).toArray(),
-      [activeHorseId],
+      () => db.timeSlotDefs.orderBy('order').filter((t) => t.horseId === horseId && !t.deletedAt).toArray(),
+      [horseId],
     ) ?? []
   const taskDefs =
     useLiveQuery(
-      () => db.taskDefs.orderBy('order').filter((t) => t.horseId === activeHorseId && !t.deletedAt).toArray(),
-      [activeHorseId],
+      () => db.taskDefs.orderBy('order').filter((t) => t.horseId === horseId && !t.deletedAt).toArray(),
+      [horseId],
     ) ?? []
   const meals = useLiveQuery(() => db.meals.orderBy('name').toArray(), []) ?? []
 
@@ -92,7 +98,6 @@ export default function CareEntryForm({ dateStr, caretakers, entry, onClose }: P
         updatedAt: Date.now(),
       })
     } else {
-      const horseId = await getCurrentHorseId()
       await db.careEntries.add({
         id: newId(),
         horseId,
@@ -133,11 +138,22 @@ export default function CareEntryForm({ dateStr, caretakers, entry, onClose }: P
         <div className="field">
           <span>Betreuer:in</span>
           <select value={caretakerId} onChange={(e) => setCaretakerId(e.target.value)}>
-            {caretakers.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
+            <optgroup label="Dieses Pferd">
+              {caretakers.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </optgroup>
+            {otherCaretakers.length > 0 && (
+              <optgroup label="Andere angemeldete Personen">
+                {otherCaretakers.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </optgroup>
+            )}
           </select>
         </div>
       </div>

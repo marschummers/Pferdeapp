@@ -5,7 +5,6 @@ import CaretakersSection from './management/CaretakersSection'
 import IngredientsSection from './management/IngredientsSection'
 import OrderedDefList from '../components/OrderedDefList'
 import SyncBar from '../components/SyncBar'
-import HorseSwitcher from '../components/HorseSwitcher'
 
 type Tab = 'pferd' | 'betreuer' | 'aufgaben' | 'zeitfenster' | 'zutaten'
 
@@ -17,8 +16,6 @@ export default function ManagementPage() {
       <h1>Verwaltung</h1>
 
       <SyncBar />
-
-      <HorseSwitcher />
 
       <div className="sub-tabs">
         <button className={tab === 'pferd' ? 'active' : ''} onClick={() => setTab('pferd')}>
