@@ -1,11 +1,9 @@
 import { useState } from 'react'
 import { db } from '../../db/db'
 import { useActiveHorse } from '../../lib/activeHorse'
-import { useAuth } from '../../lib/auth'
 import type { Horse } from '../../db/types'
 
 export default function HorseSection() {
-  const { session } = useAuth()
   const { horses, activeHorseId } = useActiveHorse()
 
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -13,12 +11,6 @@ export default function HorseSection() {
 
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [deleteConfirmText, setDeleteConfirmText] = useState('')
-
-  // Nur der Owner darf laut Supabase-Regel ein Pferd umbenennen/löschen. Ein Pferd ohne
-  // ownerId wurde noch nie synchronisiert, kann also nur von diesem Gerät stammen.
-  function isMine(horse: Horse): boolean {
-    return horse.ownerId === undefined || horse.ownerId === session?.user.id
-  }
 
   function startEdit(horse: Horse) {
     setEditingId(horse.id)
@@ -96,16 +88,12 @@ export default function HorseSection() {
                   🐴 {horse.name}
                   {horse.id === activeHorseId && <span className="horse-manage-active-badge">aktiv</span>}
                 </span>
-                {isMine(horse) && (
-                  <>
-                    <button className="icon-button" onClick={() => startEdit(horse)} aria-label="Umbenennen">
-                      ✎
-                    </button>
-                    <button className="icon-button" onClick={() => startDelete(horse)} aria-label="Löschen">
-                      ✕
-                    </button>
-                  </>
-                )}
+                <button className="icon-button" onClick={() => startEdit(horse)} aria-label="Umbenennen">
+                  ✎
+                </button>
+                <button className="icon-button" onClick={() => startDelete(horse)} aria-label="Löschen">
+                  ✕
+                </button>
               </>
             )}
           </div>

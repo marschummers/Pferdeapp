@@ -131,7 +131,11 @@ export async function syncAll(): Promise<void> {
     (h) => ({
       id: h.id,
       name: h.name,
-      owner_id: ownerId,
+      // Ursprünglichen Besitzer beibehalten, falls schon bekannt (h.ownerId kommt vom letzten
+      // Pull) – sonst überschreibt jede Umbenennung/Löschung durch eine ANDERE Person (seit
+      // migrations/0008 darf das jede*r) den Besitzer heimlich mit sich selbst. Nur für ein
+      // brandneues, noch nie synchronisiertes Pferd fällt es auf den aktuellen Account zurück.
+      owner_id: h.ownerId ?? ownerId,
       updated_at: iso(h.updatedAt),
       deleted_at: h.deletedAt ? iso(h.deletedAt) : null,
     }),

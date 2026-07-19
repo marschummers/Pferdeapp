@@ -103,8 +103,10 @@ create policy "horses: read if member" on horses
   for select using (has_horse_access(id));
 create policy "horses: owner creates" on horses
   for insert with check (owner_id = (select auth.uid()));
-create policy "horses: owner updates" on horses
-  for update using (owner_id = (select auth.uid()));
+-- Umbenennen/Löschen darf jede*r angemeldete Account, nicht nur der Ersteller -- siehe
+-- migrations/0008_horses_any_authenticated_updates.sql.
+create policy "horses: any authenticated updates" on horses
+  for update using ((select auth.uid()) is not null);
 
 create policy "horse_members: read if member" on horse_members
   for select using (has_horse_access(horse_id));

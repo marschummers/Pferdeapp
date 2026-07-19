@@ -5,6 +5,7 @@ import { db } from '../db/db'
 import type { CareEntry, Caretaker, Meal, TimeSlotDef } from '../db/types'
 import { addDays, formatDayLabel, formatWeekRange, startOfWeek, toDateStr, todayStr, weekDates } from '../lib/date'
 import { useActiveHorse } from '../lib/activeHorse'
+import { useAuth } from '../lib/auth'
 import CareEntryForm from '../components/CareEntryForm'
 import HorseSwitcher from '../components/HorseSwitcher'
 
@@ -69,6 +70,7 @@ function EntryCard({
 }
 
 export default function WeekPage() {
+  const { session } = useAuth()
   const { horses, activeHorseId, setActiveHorseId } = useActiveHorse()
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()))
   const [formTarget, setFormTarget] = useState<{ dateStr: string; entry?: CareEntry } | null>(null)
@@ -100,18 +102,42 @@ export default function WeekPage() {
       [dateStrsKey, activeHorseId],
     ) ?? []
 
-  // Für den Hinweis unten: offene Aufgaben heute bei *anderen* Pferden (jeder angemeldete
-  // Account sieht alle Pferde, siehe has_horse_access in supabase/schema.sql) – unabhängig von
-  // der gerade gewählten Kalenderwoche.
+  // Betreuer:innen-Zeilen (über alle Pferde hinweg), die mit dem eigenen Account verknüpft sind
+  // (Stern-Markierung, siehe CaretakersSection.tsx) – eine pro Pferd, auf dem man sich selbst so
+  // markiert hat.
+  const myCaretakerIds =
+    useLiveQuery(
+      () =>
+        session
+          ? db.caretakers
+              .filter((c) => c.userId === session.user.id && !c.deletedAt)
+              .toArray()
+          : Promise.resolve([] as Caretaker[]),
+      [session?.user.id],
+    ) ?? []
+  const myCaretakerIdsKey = myCaretakerIds
+    .map((c) => c.id)
+    .sort()
+    .join(',')
+
+  // Für den Hinweis unten: offene Aufgaben heute bei *anderen* Pferden, die einem mit dem
+  // eigenen Account verknüpften Betreuer zugeordnet sind – nicht jede offene Aufgabe irgendeiner
+  // Person bei irgendeinem anderen Pferd.
   const otherHorseEntriesToday =
     useLiveQuery(
       () =>
         db.careEntries
           .where('dateStr')
           .equals(today)
-          .filter((e) => e.horseId !== activeHorseId && !e.deletedAt && e.tasks.some((t) => !t.done))
+          .filter(
+            (e) =>
+              e.horseId !== activeHorseId &&
+              !e.deletedAt &&
+              myCaretakerIds.some((c) => c.id === e.caretakerId) &&
+              e.tasks.some((t) => !t.done),
+          )
           .toArray(),
-      [activeHorseId, today],
+      [activeHorseId, today, myCaretakerIdsKey],
     ) ?? []
 
   const caretakerById = new Map(caretakers.map((c) => [c.id, c]))
