@@ -44,10 +44,12 @@ export default function CareEntryForm({ horseId, dateStr, caretakers, otherCaret
   const [newTask, setNewTask] = useState('')
   const [mealId, setMealId] = useState(entry?.mealId ?? '')
 
-  // Für neue Termine warten wir, bis die Aufgaben-Stammdaten geladen sind, und übernehmen
-  // sie als Vorbelegung; danach lebt die Liste unabhängig davon im lokalen Formular-State.
-  const effectiveTasks = tasks ?? taskDefs.map((t) => ({ label: t.label, done: false }))
+  // Neue Termine starten bewusst OHNE Aufgaben – die Stammdaten-Aufgaben (taskDefs) werden nur
+  // noch als Vorschläge angeboten (siehe taskSuggestions unten) und bei Bedarf einzeln
+  // hinzugefügt, statt automatisch alle vorzubelegen.
+  const effectiveTasks = tasks ?? []
   const effectiveTimeSlotId = timeSlotId || timeSlotDefs[0]?.id || ''
+  const taskSuggestions = taskDefs.filter((t) => !effectiveTasks.some((et) => et.label === t.label))
 
   if (caretakers.length === 0) {
     return (
@@ -84,6 +86,10 @@ export default function CareEntryForm({ horseId, dateStr, caretakers, otherCaret
     if (!label) return
     setTasks([...effectiveTasks, { label, done: false }])
     setNewTask('')
+  }
+
+  function addTaskFromSuggestion(label: string) {
+    setTasks([...effectiveTasks, { label, done: false }])
   }
 
   async function handleSave() {
@@ -160,6 +166,9 @@ export default function CareEntryForm({ horseId, dateStr, caretakers, otherCaret
 
       <div className="field">
         <span>Aufgaben</span>
+        {effectiveTasks.length === 0 && taskSuggestions.length > 0 && (
+          <p className="hint">Noch keine Aufgabe hinzugefügt – unten aus den Stammdaten auswählen oder frei eintragen.</p>
+        )}
         <div className="task-chip-list">
           {effectiveTasks.map((t, i) => (
             <span className={`task-chip${t.done ? ' done' : ''}`} key={`${t.label}-${i}`}>
@@ -171,6 +180,20 @@ export default function CareEntryForm({ horseId, dateStr, caretakers, otherCaret
             </span>
           ))}
         </div>
+        {taskSuggestions.length > 0 && (
+          <div className="task-suggestion-list">
+            {taskSuggestions.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                className="task-suggestion-chip"
+                onClick={() => addTaskFromSuggestion(t.label)}
+              >
+                + {t.label}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="task-add-row">
           <input
             value={newTask}
