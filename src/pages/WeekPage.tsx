@@ -8,7 +8,11 @@ import { useActiveHorse } from '../lib/activeHorse'
 import { useAuth } from '../lib/auth'
 import CareEntryForm from '../components/CareEntryForm'
 
-function EntryCard({
+// Ein Termin als Zeile im Tages-Zeitstrahl (siehe .day-timeline in App.css) – ersetzt die
+// frühere freistehende "Karte pro Termin"-Darstellung durch eine durchgehende Terminleiste
+// innerhalb der Tages-Karte. Funktional unverändert: onEdit öffnet weiterhin das Bearbeiten-
+// Formular, die Checkbox hakt weiterhin direkt (ohne den Bearbeiten-Modus zu öffnen) ab.
+function TimelineEntry({
   entry,
   caretaker,
   timeSlot,
@@ -27,59 +31,55 @@ function EntryCard({
   }
 
   const doneCount = entry.tasks.filter((t) => t.done).length
-  // Für den kleinen Fortschritts-Ring unten – reiner Anzeige-Wert, keine neue Logik.
-  const progressRatio = entry.tasks.length > 0 ? doneCount / entry.tasks.length : 0
-  const ringCircumference = 2 * Math.PI * 9
+  const progressPercent = entry.tasks.length > 0 ? Math.round((doneCount / entry.tasks.length) * 100) : 0
 
   return (
-    <div className="entry-card">
-      <div className="entry-card-top" onClick={onEdit}>
-        <span className="slot-badge">{timeSlot?.label ?? '–'}</span>
-        <span className="caretaker-dot" style={{ background: caretaker?.color ?? '#666' }} />
-        <span className="entry-card-caretaker">{caretaker?.name ?? '(gelöscht)'}</span>
+    <div className="timeline-row">
+      <span className="timeline-node" style={{ background: caretaker?.color ?? '#666' }} />
+      <div className="timeline-content">
+        <div className="timeline-top" onClick={onEdit}>
+          <span className="timeline-slot">{timeSlot?.label ?? '–'}</span>
+          <span className="timeline-caretaker">{caretaker?.name ?? '(gelöscht)'}</span>
+        </div>
+
         {entry.tasks.length > 0 && (
-          <span className="entry-progress" aria-label={`${doneCount} von ${entry.tasks.length} erledigt`}>
-            <svg viewBox="0 0 24 24" width="22" height="22">
-              <circle className="entry-progress-track" cx="12" cy="12" r="9" />
-              <circle
-                className="entry-progress-value"
-                cx="12"
-                cy="12"
-                r="9"
-                strokeDasharray={ringCircumference}
-                strokeDashoffset={ringCircumference * (1 - progressRatio)}
-              />
-            </svg>
-            <span className="entry-progress-count">
+          <div className="timeline-progress" aria-label={`${doneCount} von ${entry.tasks.length} erledigt`}>
+            <span className="timeline-progress-track">
+              <span className="timeline-progress-fill" style={{ width: `${progressPercent}%` }} />
+            </span>
+            <span className="timeline-progress-count">
               {doneCount}/{entry.tasks.length}
             </span>
-          </span>
+          </div>
+        )}
+
+        {entry.mealId && (
+          <Link
+            to={`/fuetterung/${entry.mealId}`}
+            className="meal-chip"
+            onClick={(e) => e.stopPropagation()}
+          >
+            🍽 {meal?.name ?? '(gelöschte Mahlzeit)'}
+          </Link>
+        )}
+
+        {entry.tasks.length > 0 && (
+          <div className="entry-task-list" onClick={(e) => e.stopPropagation()}>
+            {entry.tasks.map((t, i) => (
+              <label className={`entry-task-chip${t.done ? ' done' : ''}`} key={`${t.label}-${i}`}>
+                <input type="checkbox" checked={t.done} onChange={() => toggleTask(i)} />
+                {t.label}
+              </label>
+            ))}
+          </div>
+        )}
+
+        {entry.note && (
+          <div className="entry-card-note">
+            <div className="paper-card entry-note-paper">{entry.note}</div>
+          </div>
         )}
       </div>
-      {entry.mealId && (
-        <Link
-          to={`/fuetterung/${entry.mealId}`}
-          className="meal-chip"
-          onClick={(e) => e.stopPropagation()}
-        >
-          🍽 {meal?.name ?? '(gelöschte Mahlzeit)'}
-        </Link>
-      )}
-      {entry.tasks.length > 0 && (
-        <div className="entry-task-list" onClick={(e) => e.stopPropagation()}>
-          {entry.tasks.map((t, i) => (
-            <label className={`entry-task-chip${t.done ? ' done' : ''}`} key={`${t.label}-${i}`}>
-              <input type="checkbox" checked={t.done} onChange={() => toggleTask(i)} />
-              {t.label}
-            </label>
-          ))}
-        </div>
-      )}
-      {entry.note && (
-        <div className="entry-card-note">
-          <div className="paper-card entry-note-paper">{entry.note}</div>
-        </div>
-      )}
     </div>
   )
 }
@@ -269,17 +269,22 @@ export default function WeekPage() {
           .sort((a, b) => (timeSlotOrder.get(a.timeSlotId) ?? 0) - (timeSlotOrder.get(b.timeSlotId) ?? 0))
         const isNewFormOpenHere = formTarget?.dateStr === dateStr && !formTarget.entry
         const isToday = dateStr === today
-        // Rein für die Typografie (Wochentag groß/betont, Datum klein/gedämpft) in zwei Spans
-        // aufgeteilt – formatDayLabel liefert weiterhin denselben einen String wie bisher.
+        // Rein für die Typografie (großes Tagesmedaillon mit Zahl, Wochentag, Monat getrennt)
+        // in drei Teile zerlegt – formatDayLabel liefert weiterhin denselben einen String wie
+        // bisher, hier wird nur dessen Darstellung aufgeteilt.
         const [weekday, dayMonth] = formatDayLabel(day).split(', ')
+        const [dayNumber, monthName] = dayMonth.split('. ')
 
         return (
-          <div className={`day-group${isToday ? ' today' : ''}`} key={dateStr}>
-            <div className="day-group-header">
-              <span className={`day-group-title${isToday ? ' today' : ''}`}>
-                {weekday}
-                <span className="day-group-date">{dayMonth}</span>
-              </span>
+          <div className={`day-card${isToday ? ' today' : ''}`} key={dateStr}>
+            <div className="day-card-header">
+              <div className="day-card-heading">
+                <span className="day-medallion">{dayNumber}</span>
+                <span className="day-heading-text">
+                  <span className="day-weekday">{weekday}</span>
+                  <span className="day-month">{monthName}</span>
+                </span>
+              </div>
               <button
                 className="add-entry-button"
                 onClick={() => setFormTarget({ dateStr })}
@@ -289,7 +294,7 @@ export default function WeekPage() {
               </button>
             </div>
 
-            <div className="entry-list">
+            <div className="day-timeline">
               {dayEntries.map((entry) =>
                 formTarget?.entry?.id === entry.id ? (
                   <CareEntryForm
@@ -302,7 +307,7 @@ export default function WeekPage() {
                     onClose={() => setFormTarget(null)}
                   />
                 ) : (
-                  <EntryCard
+                  <TimelineEntry
                     key={entry.id}
                     entry={entry}
                     caretaker={caretakerById.get(entry.caretakerId)}
@@ -322,7 +327,10 @@ export default function WeekPage() {
                 />
               )}
               {dayEntries.length === 0 && !isNewFormOpenHere && (
-                <p className="hint day-group-empty">Noch nichts geplant.</p>
+                <div className="timeline-row timeline-row-empty">
+                  <span className="timeline-node ghost" />
+                  <p className="hint timeline-empty-text">Noch nichts geplant.</p>
+                </div>
               )}
             </div>
           </div>

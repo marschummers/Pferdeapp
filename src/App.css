@@ -217,65 +217,103 @@
   font-size: 0.78rem;
 }
 
-/* --- Tages-Gruppen ("Montagskarte") --- */
+/* --- Tages-Karte ("Montagskarte") – Neuentwurf als geschlossene Karte mit Zeitstrahl --- */
 
-.day-group {
+.day-card {
   position: relative;
-  margin-bottom: 1.75rem;
+  background: linear-gradient(165deg, var(--bg-elevated) 0%, var(--bg-elevated-2) 100%);
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  padding: 1.15rem 1.2rem 1.3rem;
+  margin-bottom: 1.4rem;
+  box-shadow:
+    0 6px 20px rgba(0, 0, 0, 0.32),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
-.day-group.today {
-  padding-left: 0.9rem;
+.day-card.today {
+  border-color: var(--accent);
+  box-shadow:
+    0 6px 22px rgba(0, 0, 0, 0.35),
+    0 0 0 1px rgba(224, 181, 108, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
-.day-group.today::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 0.2rem;
-  bottom: 0.4rem;
-  width: 3px;
-  border-radius: 3px;
-  background: linear-gradient(180deg, var(--accent-strong) 0%, var(--accent) 55%, transparent 100%);
-  box-shadow: 0 0 8px rgba(224, 181, 108, 0.45);
-}
-
-.day-group-header {
+.day-card-header {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
-  margin-bottom: 0.75rem;
-  padding-bottom: 0.55rem;
-  background-image: linear-gradient(90deg, var(--border) 0%, var(--border) 65%, transparent 100%);
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+  padding-bottom: 0.85rem;
+  background-image: linear-gradient(90deg, var(--border) 0%, var(--border) 70%, transparent 100%);
   background-position: bottom;
   background-repeat: no-repeat;
   background-size: 100% 1px;
 }
 
-.day-group-title {
+.day-card-heading {
   display: flex;
-  align-items: baseline;
-  gap: 0.5rem;
-  font-weight: 700;
-  font-size: 0.95rem;
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-  color: var(--text);
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
 }
 
-.day-group-title.today {
+.day-medallion {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 14px;
+  border: 1.5px solid var(--accent);
+  background: linear-gradient(160deg, rgba(204, 154, 82, 0.16) 0%, rgba(204, 154, 82, 0.04) 100%);
+  color: var(--accent-strong);
+  font-size: 1.05rem;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.12);
+}
+
+.day-card.today .day-medallion {
+  background: linear-gradient(160deg, var(--accent-strong) 0%, var(--accent) 100%);
+  color: var(--accent-text);
+  border-color: var(--accent-strong);
+  box-shadow:
+    0 0 12px rgba(224, 181, 108, 0.5),
+    inset 0 1px 1px rgba(255, 255, 255, 0.3);
+}
+
+.day-heading-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.day-weekday {
+  font-weight: 700;
+  font-size: 0.92rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.day-card.today .day-weekday {
   color: var(--accent-strong);
 }
 
-.day-group-date {
+.day-month {
+  font-size: 0.74rem;
   color: var(--text-dim);
-  font-size: 0.72rem;
-  font-weight: 500;
-  text-transform: none;
-  letter-spacing: 0.01em;
 }
 
 .add-entry-button {
+  flex-shrink: 0;
   background: linear-gradient(160deg, var(--bg-elevated-2) 0%, var(--bg-elevated) 100%);
   border: 1px solid var(--accent);
   color: var(--accent-strong);
@@ -299,119 +337,141 @@
   box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.4);
 }
 
-.entry-list {
+.day-timeline {
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 1.1rem;
 }
 
-@keyframes entry-card-in {
+.day-timeline::before {
+  content: '';
+  position: absolute;
+  left: 0.65rem;
+  top: 0.35rem;
+  bottom: 0.35rem;
+  width: 1px;
+  background: linear-gradient(180deg, var(--border) 0%, var(--border) 88%, transparent 100%);
+}
+
+@keyframes timeline-row-in {
   from {
     opacity: 0;
-    transform: translateY(6px);
+    transform: translateX(-4px);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: translateX(0);
   }
 }
 
-.entry-card {
-  background: linear-gradient(160deg, var(--bg-elevated) 0%, var(--bg-elevated-2) 100%);
-  border: 1px solid var(--border);
-  border-radius: 18px;
-  padding: 0.9rem 1.05rem;
-  box-shadow:
-    0 4px 14px rgba(0, 0, 0, 0.3),
-    inset 0 1px 0 rgba(255, 255, 255, 0.04);
-  animation: entry-card-in 0.22s ease both;
+.timeline-row {
+  position: relative;
+  padding-left: 1.55rem;
+  animation: timeline-row-in 0.22s ease both;
 }
 
-.entry-card-top {
+.timeline-node {
+  position: absolute;
+  left: 0.4rem;
+  top: 0.42rem;
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 3px rgba(224, 181, 108, 0.28),
+    0 0 0 4px rgba(0, 0, 0, 0.25);
+}
+
+.timeline-node.ghost {
+  background: transparent;
+  border: 1px dashed var(--border);
+  box-shadow: none;
+}
+
+.timeline-content {
   display: flex;
-  align-items: center;
-  gap: 0.6rem;
+  flex-direction: column;
+}
+
+.timeline-top {
+  display: flex;
+  align-items: baseline;
+  gap: 0.55rem;
   cursor: pointer;
-  margin: -0.15rem -0.15rem 0;
-  padding: 0.15rem;
-  border-radius: 10px;
+  margin: -0.1rem -0.3rem 0 -0.15rem;
+  padding: 0.1rem 0.3rem 0.1rem 0.15rem;
+  border-radius: 8px;
   transition: background-color 0.15s ease;
 }
 
-.entry-card-top:active {
+.timeline-top:active {
   background-color: rgba(204, 154, 82, 0.08);
 }
 
-.slot-badge {
+.timeline-slot {
   flex-shrink: 0;
-  font-size: 0.64rem;
+  font-size: 0.68rem;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.07em;
   font-weight: 700;
   color: var(--accent-strong);
-  background: linear-gradient(160deg, rgba(204, 154, 82, 0.14) 0%, rgba(204, 154, 82, 0.04) 100%);
-  border: 1px solid var(--accent);
-  border-radius: 999px;
-  padding: 0.22rem 0.6rem;
 }
 
-.caretaker-dot {
-  flex-shrink: 0;
-  width: 0.8rem;
-  height: 0.8rem;
-  border-radius: 50%;
-  box-shadow:
-    0 0 0 2px rgba(0, 0, 0, 0.35),
-    0 0 0 3px rgba(224, 181, 108, 0.3),
-    inset 0 1px 1px rgba(255, 255, 255, 0.4);
-}
-
-.entry-card-caretaker {
+.timeline-caretaker {
   flex: 1;
   min-width: 0;
   font-weight: 600;
-  font-size: 0.95rem;
-  letter-spacing: 0.01em;
+  font-size: 0.98rem;
   color: var(--text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.entry-progress {
-  flex-shrink: 0;
+.timeline-progress {
   display: flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: 0.55rem;
+  margin-top: 0.5rem;
 }
 
-.entry-progress svg {
-  transform: rotate(-90deg);
-  overflow: visible;
+.timeline-progress-track {
+  flex: 1;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--border);
+  overflow: hidden;
+  display: block;
 }
 
-.entry-progress-track {
-  fill: none;
-  stroke: var(--border);
-  stroke-width: 2.5;
+.timeline-progress-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent) 0%, var(--accent-2) 100%);
+  transition: width 0.3s ease;
 }
 
-.entry-progress-value {
-  fill: none;
-  stroke: var(--accent-2);
-  stroke-width: 2.5;
-  stroke-linecap: round;
-  transition: stroke-dashoffset 0.3s ease;
-}
-
-.entry-progress-count {
+.timeline-progress-count {
+  flex-shrink: 0;
   color: var(--text-dim);
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   font-family: var(--font-mono);
 }
 
+.timeline-row-empty {
+  display: flex;
+  align-items: center;
+}
+
+.timeline-empty-text {
+  margin: 0;
+  font-style: italic;
+}
+
 .entry-card-note {
-  margin: 0.75rem 0 0;
+  margin: 0.65rem 0 0;
 }
 
 .entry-note-paper {
@@ -422,7 +482,7 @@
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  margin-top: 0.7rem;
+  margin-top: 0.6rem;
   background: linear-gradient(160deg, rgba(138, 154, 124, 0.16) 0%, rgba(138, 154, 124, 0.05) 100%);
   border: 1px solid var(--accent-2);
   color: var(--accent-2);
@@ -442,7 +502,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: 0.45rem;
-  margin-top: 0.75rem;
+  margin-top: 0.6rem;
 }
 
 .entry-task-chip {
@@ -466,14 +526,6 @@
 .entry-task-chip input[type='checkbox'] {
   width: auto;
   accent-color: var(--accent-2);
-}
-
-.day-group-empty {
-  border: 1px dashed var(--border);
-  border-radius: 14px;
-  padding: 0.85rem 1rem;
-  text-align: center;
-  font-size: 0.82rem;
 }
 
 .task-chip-list {
