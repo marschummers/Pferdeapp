@@ -27,6 +27,9 @@ function EntryCard({
   }
 
   const doneCount = entry.tasks.filter((t) => t.done).length
+  // Für den kleinen Fortschritts-Ring unten – reiner Anzeige-Wert, keine neue Logik.
+  const progressRatio = entry.tasks.length > 0 ? doneCount / entry.tasks.length : 0
+  const ringCircumference = 2 * Math.PI * 9
 
   return (
     <div className="entry-card">
@@ -35,8 +38,21 @@ function EntryCard({
         <span className="caretaker-dot" style={{ background: caretaker?.color ?? '#666' }} />
         <span className="entry-card-caretaker">{caretaker?.name ?? '(gelöscht)'}</span>
         {entry.tasks.length > 0 && (
-          <span className="entry-card-tasks-summary">
-            {doneCount}/{entry.tasks.length}
+          <span className="entry-progress" aria-label={`${doneCount} von ${entry.tasks.length} erledigt`}>
+            <svg viewBox="0 0 24 24" width="22" height="22">
+              <circle className="entry-progress-track" cx="12" cy="12" r="9" />
+              <circle
+                className="entry-progress-value"
+                cx="12"
+                cy="12"
+                r="9"
+                strokeDasharray={ringCircumference}
+                strokeDashoffset={ringCircumference * (1 - progressRatio)}
+              />
+            </svg>
+            <span className="entry-progress-count">
+              {doneCount}/{entry.tasks.length}
+            </span>
           </span>
         )}
       </div>
@@ -50,9 +66,9 @@ function EntryCard({
         </Link>
       )}
       {entry.tasks.length > 0 && (
-        <div className="task-chip-list" onClick={(e) => e.stopPropagation()}>
+        <div className="entry-task-list" onClick={(e) => e.stopPropagation()}>
           {entry.tasks.map((t, i) => (
-            <label className={`task-chip${t.done ? ' done' : ''}`} key={`${t.label}-${i}`}>
+            <label className={`entry-task-chip${t.done ? ' done' : ''}`} key={`${t.label}-${i}`}>
               <input type="checkbox" checked={t.done} onChange={() => toggleTask(i)} />
               {t.label}
             </label>
@@ -61,7 +77,7 @@ function EntryCard({
       )}
       {entry.note && (
         <div className="entry-card-note">
-          <div className="paper-card">{entry.note}</div>
+          <div className="paper-card entry-note-paper">{entry.note}</div>
         </div>
       )}
     </div>
@@ -252,12 +268,17 @@ export default function WeekPage() {
           .filter((e) => e.dateStr === dateStr)
           .sort((a, b) => (timeSlotOrder.get(a.timeSlotId) ?? 0) - (timeSlotOrder.get(b.timeSlotId) ?? 0))
         const isNewFormOpenHere = formTarget?.dateStr === dateStr && !formTarget.entry
+        const isToday = dateStr === today
+        // Rein für die Typografie (Wochentag groß/betont, Datum klein/gedämpft) in zwei Spans
+        // aufgeteilt – formatDayLabel liefert weiterhin denselben einen String wie bisher.
+        const [weekday, dayMonth] = formatDayLabel(day).split(', ')
 
         return (
-          <div className="day-group" key={dateStr}>
+          <div className={`day-group${isToday ? ' today' : ''}`} key={dateStr}>
             <div className="day-group-header">
-              <span className={`day-group-title${dateStr === today ? ' today' : ''}`}>
-                {formatDayLabel(day)}
+              <span className={`day-group-title${isToday ? ' today' : ''}`}>
+                {weekday}
+                <span className="day-group-date">{dayMonth}</span>
               </span>
               <button
                 className="add-entry-button"
@@ -300,7 +321,9 @@ export default function WeekPage() {
                   onClose={() => setFormTarget(null)}
                 />
               )}
-              {dayEntries.length === 0 && !isNewFormOpenHere && <p className="hint">Noch nichts geplant.</p>}
+              {dayEntries.length === 0 && !isNewFormOpenHere && (
+                <p className="hint day-group-empty">Noch nichts geplant.</p>
+              )}
             </div>
           </div>
         )
