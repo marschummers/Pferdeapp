@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useAuth } from '../lib/auth'
 import { syncAll } from '../lib/sync'
 
 const LAST_SYNCED_KEY = 'stallplaner-last-synced-at'
+const AUTO_SYNC_INTERVAL_MS = 5 * 60 * 1000
 
 export default function SyncBar() {
   const { configured, session, signOut } = useAuth()
@@ -12,22 +13,60 @@ export default function SyncBar() {
     const stored = localStorage.getItem(LAST_SYNCED_KEY)
     return stored ? Number(stored) : null
   })
+  // Verhindert überlappende Sync-Läufe zwischen den automatischen Auslösern (Vordergrund-Wechsel
+  // + Intervall, siehe Effekt unten) – eine Ref statt des `syncing`-States, weil deren
+  // Callbacks sonst einen veralteten Stand aus dem Erstellungszeitpunkt des Effekts sähen.
+  const syncingRef = useRef(false)
 
-  if (!configured || !session) return null
-
-  async function handleSync() {
+  const runSync = useCallback(async (silent: boolean) => {
+    if (syncingRef.current) return
+    syncingRef.current = true
     setSyncing(true)
-    setError(null)
     try {
       await syncAll()
       const now = Date.now()
       localStorage.setItem(LAST_SYNCED_KEY, String(now))
       setLastSyncedAt(now)
+      setError(null)
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Sync fehlgeschlagen.')
+      // Automatische Versuche (Vordergrund-Wechsel/Intervall) scheitern bewusst still, z.B. bei
+      // schlechtem Empfang im Stall – nur der manuelle Button zeigt eine Fehlermeldung an.
+      if (!silent) setError(e instanceof Error ? e.message : 'Sync fehlgeschlagen.')
     } finally {
+      syncingRef.current = false
       setSyncing(false)
     }
+  }, [])
+
+  // Automatischer Sync: sofort beim Öffnen/Zurückkehren zur App (Sichtbarkeits-Wechsel) und
+  // danach alle 5 Minuten, solange sie offen im Vordergrund bleibt. `session?.user.id` statt
+  // der ganzen `session` als Abhängigkeit, damit ein stiller Token-Refresh im Hintergrund den
+  // Timer nicht unnötig neu startet.
+  useEffect(() => {
+    if (!configured || !session) return
+
+    runSync(true)
+
+    function handleVisibility() {
+      if (document.visibilityState === 'visible') runSync(true)
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') runSync(true)
+    }, AUTO_SYNC_INTERVAL_MS)
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility)
+      clearInterval(interval)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [configured, session?.user.id, runSync])
+
+  if (!configured || !session) return null
+
+  async function handleSync() {
+    await runSync(false)
   }
 
   return (
