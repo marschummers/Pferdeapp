@@ -25,6 +25,9 @@ async function mergeTable<Local extends { id: string; updatedAt: number }, Remot
   remoteTableName: string,
   toRemote: (local: Local) => Remote,
   fromRemote: (remote: Remote, existingLocal?: Local) => Local,
+  // Optional: Push über eine RPC-Funktion statt eines direkten .upsert() – Workaround für einen
+  // hartnäckigen RLS-Bug auf der horses-Tabelle, siehe migrations/0014_upsert_horse_rpc.sql.
+  pushRemote?: (rows: Remote[]) => Promise<void>,
 ): Promise<void> {
   if (!supabase) throw new Error('Supabase ist nicht konfiguriert.')
 
@@ -57,8 +60,12 @@ async function mergeTable<Local extends { id: string; updatedAt: number }, Remot
   }
 
   if (toPushRemote.length > 0) {
-    const { error: upsertError } = await supabase.from(remoteTableName).upsert(toPushRemote)
-    if (upsertError) throw new Error(`${remoteTableName}: ${upsertError.message}`)
+    if (pushRemote) {
+      await pushRemote(toPushRemote)
+    } else {
+      const { error: upsertError } = await supabase.from(remoteTableName).upsert(toPushRemote)
+      if (upsertError) throw new Error(`${remoteTableName}: ${upsertError.message}`)
+    }
   }
   if (toPutLocal.length > 0) {
     await localTable.bulkPut(toPutLocal)
@@ -71,6 +78,7 @@ interface RemoteHorse {
   owner_id: string
   updated_at: string
   deleted_at: string | null
+  join_code: string
 }
 
 interface RemoteCaretaker {
@@ -119,7 +127,11 @@ interface RemoteCareEntry {
 // bewusst außen vor – siehe Memory "project-supabase-sync-concept".
 export async function syncAll(): Promise<void> {
   if (!supabase) throw new Error('Supabase ist nicht konfiguriert.')
-  const { data: userData, error: userError } = await supabase.auth.getUser()
+  // Als eigene Konstante festgehalten, statt weiter unten (auch innerhalb von Callbacks) auf das
+  // Modul-level `supabase` zuzugreifen: TypeScript verliert die oben geprüfte Nicht-null-
+  // Einengung sonst innerhalb verschachtelter Funktionsausdrücke wie dem pushRemote-Callback.
+  const client = supabase
+  const { data: userData, error: userError } = await client.auth.getUser()
   if (userError || !userData.user) throw new Error('Nicht eingeloggt.')
   const ownerId = userData.user.id
 
@@ -153,13 +165,13 @@ export async function syncAll(): Promise<void> {
     (h) => ({
       id: h.id,
       name: h.name,
-      // Ursprünglichen Besitzer beibehalten, falls schon bekannt (h.ownerId kommt vom letzten
-      // Pull) – sonst überschreibt jede Umbenennung/Löschung durch eine ANDERE Person (seit
-      // migrations/0008 darf das jede*r) den Besitzer heimlich mit sich selbst. Nur für ein
-      // brandneues, noch nie synchronisiertes Pferd fällt es auf den aktuellen Account zurück.
+      // owner_id wird beim Push nicht mehr direkt verwendet (nur fürs Remote-Typ-Shape) – die
+      // upsert_horse()-RPC unten setzt ihn serverseitig selbst (Insert: aufrufender Account,
+      // Update: unverändert), siehe migrations/0014_upsert_horse_rpc.sql.
       owner_id: h.ownerId ?? ownerId,
       updated_at: iso(h.updatedAt),
       deleted_at: h.deletedAt ? iso(h.deletedAt) : null,
+      join_code: h.joinCode,
     }),
     (r) => ({
       id: r.id,
@@ -167,7 +179,58 @@ export async function syncAll(): Promise<void> {
       ownerId: r.owner_id,
       updatedAt: ms(r.updated_at),
       deletedAt: r.deleted_at ? ms(r.deleted_at) : undefined,
+      joinCode: r.join_code,
     }),
+    // Push über eine security-definer-RPC statt direktem .upsert(): ein direkter Schreibzugriff
+    // auf horses schlägt trotz nachweislich korrekter RLS-Policy zuverlässig fehl (alter,
+    // ungeklärter Bug, siehe migrations/0014_upsert_horse_rpc.sql) – die RPC-Funktion, die
+    // bereits für horse_members (join_horse_by_code) zuverlässig funktioniert, umgeht das.
+    async (rows) => {
+      for (const row of rows) {
+        const { error: rpcError } = await client.rpc('upsert_horse', {
+          p_id: row.id,
+          p_name: row.name,
+          p_updated_at: row.updated_at,
+          p_deleted_at: row.deleted_at,
+          p_join_code: row.join_code,
+        })
+        if (!rpcError) {
+          // Ein Push aktualisiert (anders als ein Pull) nie den lokalen Datensatz -- ohne das
+          // hier würde ein frisch angelegtes Pferd sein `ownerId` erst beim nächsten PULL
+          // erfahren, was in der Praxis oft nie wieder passiert (Zeitstempel sind ja nach dem
+          // Push schon gleich). Der Beitritts-Code-Bereich in HorseSection.tsx (nur für
+          // Besitzer:innen) bliebe sonst dauerhaft versteckt. row.owner_id ist hier immer
+          // korrekt: bei einem neuen Pferd der aufrufende Account, bei einem bereits bekannten
+          // Pferd der schon vorher lokal bekannte (unveränderte) Besitzer.
+          await db.horses.update(row.id, { ownerId: row.owner_id })
+          continue
+        }
+        // "Kein Zugriff"/"noch nicht freigegeben": Karteileiche aus einer Zeit, in der RLS auf
+        // horses versehentlich deaktiviert war und dadurch auch fremde Pferde lokal landeten
+        // (bzw. ein Account, der zwischenzeitlich seine Freigabe verlor). Lokal aufräumen statt
+        // den kompletten Sync abzubrechen, sonst blockiert eine einzelne verwaiste Zeile
+        // dauerhaft jeden weiteren Versuch – andere, echte Fehler weiterhin hart durchreichen.
+        if (rpcError.message.includes('Kein Zugriff') || rpcError.message.includes('noch nicht freigegeben')) {
+          await db.transaction(
+            'rw',
+            db.horses,
+            db.caretakers,
+            db.taskDefs,
+            db.timeSlotDefs,
+            db.careEntries,
+            async () => {
+              await db.horses.delete(row.id)
+              await db.caretakers.where('horseId').equals(row.id).delete()
+              await db.taskDefs.where('horseId').equals(row.id).delete()
+              await db.timeSlotDefs.where('horseId').equals(row.id).delete()
+              await db.careEntries.where('horseId').equals(row.id).delete()
+            },
+          )
+          continue
+        }
+        throw new Error(`horses: ${rpcError.message}`)
+      }
+    },
   )
 
   await mergeTable<Caretaker, RemoteCaretaker>(

@@ -3,12 +3,16 @@ import { db } from '../db/db'
 import HorseSection from './management/HorseSection'
 import CaretakersSection from './management/CaretakersSection'
 import IngredientsSection from './management/IngredientsSection'
+import AccessRequestsSection from './management/AccessRequestsSection'
 import OrderedDefList from '../components/OrderedDefList'
 import SyncBar from '../components/SyncBar'
+import { useAuth, ADMIN_EMAIL } from '../lib/auth'
 
-type Tab = 'pferd' | 'betreuer' | 'aufgaben' | 'zeitfenster' | 'zutaten'
+type Tab = 'pferd' | 'betreuer' | 'aufgaben' | 'zeitfenster' | 'zutaten' | 'zugaenge'
 
 export default function ManagementPage() {
+  const { session } = useAuth()
+  const isAdmin = session?.user.email === ADMIN_EMAIL
   const [tab, setTab] = useState<Tab>('pferd')
 
   return (
@@ -33,6 +37,11 @@ export default function ManagementPage() {
         <button className={tab === 'zutaten' ? 'active' : ''} onClick={() => setTab('zutaten')}>
           Zutaten
         </button>
+        {isAdmin && (
+          <button className={tab === 'zugaenge' ? 'active' : ''} onClick={() => setTab('zugaenge')}>
+            Zugänge
+          </button>
+        )}
       </div>
 
       {tab === 'pferd' && <HorseSection />}
@@ -69,6 +78,8 @@ export default function ManagementPage() {
       )}
 
       {tab === 'zutaten' && <IngredientsSection />}
+
+      {tab === 'zugaenge' && isAdmin && <AccessRequestsSection />}
     </div>
   )
 }

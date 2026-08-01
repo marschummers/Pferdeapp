@@ -2,18 +2,20 @@
 // Pferd; welches davon gerade aktiv angezeigt wird, steuert src/lib/activeHorse.tsx.
 // `ownerId` (Supabase auth.uid() des Besitzers, von lib/sync.ts beim Pull mitgeliefert) ist
 // optional, weil ein frisch lokal angelegtes, noch nie synchronisiertes Pferd ihn noch nicht
-// kennt – dient sowohl dazu, im Umschalter das eigene Pferd zuerst zu zeigen, als auch dazu,
-// Umbenennen/Löschen in HorseSection.tsx nur für tatsächlich eigene Pferde anzubieten (nur der
-// Owner darf laut Supabase-Regel schreibend zugreifen).
+// kennt – dient dazu, im Umschalter das eigene Pferd zuerst zu zeigen und den join_code/die
+// Mitglieder-Verwaltung in HorseSection.tsx nur für tatsächlich eigene Pferde anzubieten.
 // `deletedAt` markiert weiches Löschen wie bei den anderen Tabellen (siehe lib/sync.ts):
 // löscht man ein Pferd, werden zusätzlich alle zugehörigen Betreuer:innen/Aufgaben/Zeitfenster/
 // Termine mit weich gelöscht (siehe HorseSection.tsx).
+// `joinCode` ist der kurze, pro Pferd eindeutige Code, mit dem sich freigegebene Accounts über
+// join_horse_by_code() (siehe supabase/schema.sql) selbst mit diesem Pferd verbinden können.
 export interface Horse {
   id: string;
   name: string;
   updatedAt: number;
   ownerId?: string;
   deletedAt?: number;
+  joinCode: string;
 }
 
 // Eine Person, die sich um das Pferd kümmern kann (z.B. Besitzerin, Reitbeteiligung, Stallnachbarin).

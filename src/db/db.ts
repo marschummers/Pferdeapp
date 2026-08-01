@@ -84,13 +84,28 @@ db.version(3).upgrade(async (tx) => {
     });
 });
 
+// Backfillt `joinCode` auf Pferde-Zeilen von vor der Einführung des Beitritts per Code (siehe
+// supabase/migrations/0011). Nur für noch NIE synchronisierte Pferde (kein ownerId) lokal einen
+// neuen Code erzeugen – bereits synchronisierte Pferde bekommen ihren serverseitig erzeugten
+// join_code stattdessen beim nächsten Sync (sonst kämen zwei unabhängig erzeugte Codes lokal
+// und remote auseinander, ohne dass ein reiner Feld-Backfill ohne geändertes updatedAt das je
+// per Last-Write-Wins auflösen würde).
+db.version(4).upgrade(async (tx) => {
+  await tx
+    .table('horses')
+    .toCollection()
+    .modify((h) => {
+      if (!h.joinCode && h.ownerId === undefined) h.joinCode = newHorseJoinCode();
+    });
+});
+
 // Nur beim allerersten Erzeugen der Datenbank (nicht bei jedem App-Start) mit sinnvollen
 // Standardwerten befüllen, damit direkt nutzbare Zeitfenster/Aufgaben vorhanden sind.
 // Läuft für Neuinstallationen direkt auf der aktuellen Version (nicht über .upgrade()).
 db.on('populate', () => {
   const horseId = newId();
   const now = Date.now();
-  db.horses.add({ id: horseId, name: DEFAULT_HORSE_NAME, updatedAt: now });
+  db.horses.add({ id: horseId, name: DEFAULT_HORSE_NAME, updatedAt: now, joinCode: newHorseJoinCode() });
 
   const defaultTimeSlots: TimeSlotDef[] = [
     { id: newId(), horseId, label: 'Morgens', order: 0, updatedAt: now },
@@ -112,6 +127,13 @@ export function newId(): string {
   return crypto.randomUUID();
 }
 
+// Kurzer, gut vorlesbarer Code zum Beitreten eines Pferds (siehe join_horse_by_code() in
+// supabase/schema.sql) – muss serverseitig eindeutig sein, daher bei einer Kollision beim
+// nächsten Sync-Push einfach neu vergeben (praktisch bei 16^6 Kombinationen quasi nie nötig).
+export function newHorseJoinCode(): string {
+  return crypto.randomUUID().replace(/-/g, '').slice(0, 6).toUpperCase();
+}
+
 // Exportiert (statt nur modul-intern), damit src/lib/activeHorse.tsx denselben Key liest/
 // schreibt wie die Funktionen hier – Umschalten im UI und Anlegen neuer Zeilen (die weiterhin
 // über getCurrentHorseId laufen) müssen immer auf demselben aktiven Pferd landen.
@@ -126,7 +148,7 @@ export const CURRENT_HORSE_ID_KEY = 'stallplaner-current-horse-id';
 // Das Ergebnis wird in localStorage gemerkt und beim Umschalten über setCurrentHorseId (siehe
 // src/lib/activeHorse.tsx, dort als setActiveHorseId genutzt) aktualisiert – ohne explizite
 // Auswahl fällt es auf das erste bekannte Pferd zurück, sobald über Supabase-Sync mehr als eins
-// lokal existiert (jeder angemeldete Account sieht alle Pferde, siehe schema.sql).
+// lokal existiert (z.B. nach Beitritt zu einem weiteren Pferd per Code, siehe schema.sql).
 export async function getCurrentHorseId(): Promise<string> {
   const cached = localStorage.getItem(CURRENT_HORSE_ID_KEY);
   if (cached) return cached;

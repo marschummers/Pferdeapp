@@ -4,8 +4,9 @@ import { db, CURRENT_HORSE_ID_KEY, setCurrentHorseId } from '../db/db'
 import type { Horse } from '../db/types'
 
 interface ActiveHorseState {
-  // Alle lokal bekannten Pferde (jeder angemeldete Account sieht über Sync alle Pferde, siehe
-  // schema.sql). Wird u.a. von WeekPage.tsx und HorseSection.tsx genutzt.
+  // Alle lokal bekannten Pferde – i.d.R. das eigene plus die, denen man per Code beigetreten
+  // ist (siehe join_horse_by_code in schema.sql). Wird u.a. von WeekPage.tsx und
+  // HorseSection.tsx genutzt.
   horses: Horse[]
   activeHorseId: string | null
   activeHorse: Horse | null

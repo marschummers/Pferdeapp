@@ -58,7 +58,7 @@ function AppShell() {
 }
 
 function App() {
-  const { configured, loading, session } = useAuth()
+  const { configured, loading, session, approved, signOut } = useAuth()
 
   useEffect(() => {
     applyPendingStockDeductions()
@@ -78,6 +78,34 @@ function App() {
   }
 
   if (!session) return <LoginPage />
+
+  // Zugangs-Warteliste (siehe profiles.approved in supabase/schema.sql): erst nach Freigabe
+  // durch die Stallverwaltung sieht der Account irgendwelche Pferde-Daten. `null` = Freigabe-
+  // Status wird noch geladen, unterscheidet sich bewusst von `false` (noch nicht freigegeben).
+  if (approved === null) {
+    return (
+      <div className="app">
+        <div className="auth-loading">Lädt…</div>
+      </div>
+    )
+  }
+
+  if (!approved) {
+    return (
+      <div className="login-screen">
+        <h1>Warte auf Freigabe</h1>
+        <div className="edit-panel login-panel">
+          <p className="hint">
+            Deine Anmeldung (<strong>{session.user.email}</strong>) ist eingegangen. Sobald die Stallverwaltung dich
+            freigibt, kannst du hier loslegen.
+          </p>
+          <button className="secondary-button login-alt-email" onClick={() => signOut()}>
+            Abmelden
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   return <AppShell />
 }

@@ -2,11 +2,19 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from './supabaseClient'
 
+// Feste Admin-Adresse statt eines eigenen Rollen-Systems – muss exakt zu den
+// "auth.jwt() ->> 'email' = ..."-Policies in supabase/schema.sql passen (Zugangs-Warteliste).
+export const ADMIN_EMAIL = 'marschummers@googlemail.com'
+
 interface AuthState {
   session: Session | null
   loading: boolean
   // null, wenn Supabase nicht konfiguriert ist (fehlende Umgebungsvariablen).
   configured: boolean
+  // Zugangs-Warteliste (siehe profiles.approved in supabase/schema.sql): null solange
+  // unbekannt/ohne Session, sonst der geladene Freigabe-Status. App.tsx zeigt bei false einen
+  // Wartebildschirm statt der eigentlichen App.
+  approved: boolean | null
   signInWithOtp: (email: string) => Promise<{ error: string | null }>
   // Bestätigt den 6-stelligen Code aus derselben Mail wie der Login-Link. Wichtig für als
   // Home-Bildschirm-App installierte Nutzung auf iOS: die bekommt einen eigenen, von Safari
@@ -22,6 +30,7 @@ const AuthContext = createContext<AuthState | null>(null)
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
+  const [approved, setApproved] = useState<boolean | null>(null)
 
   useEffect(() => {
     if (!supabase) {
@@ -37,6 +46,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })
     return () => subscription.subscription.unsubscribe()
   }, [])
+
+  // Lädt den Freigabe-Status separat vom Session-State, da profiles erst nach dem Login lesbar
+  // ist (RLS, siehe schema.sql) – läuft bei jedem Account-Wechsel neu.
+  useEffect(() => {
+    if (!supabase || !session) {
+      setApproved(null)
+      return
+    }
+    let cancelled = false
+    supabase
+      .from('profiles')
+      .select('approved')
+      .eq('id', session.user.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!cancelled) setApproved(data?.approved ?? false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [session?.user.id])
 
   async function signInWithOtp(email: string) {
     if (!supabase) return { error: 'Supabase ist nicht konfiguriert.' }
@@ -58,7 +88,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ session, loading, configured: !!supabase, signInWithOtp, verifyOtp, signOut }}>
+    <AuthContext.Provider
+      value={{ session, loading, configured: !!supabase, approved, signInWithOtp, verifyOtp, signOut }}
+    >
       {children}
     </AuthContext.Provider>
   )

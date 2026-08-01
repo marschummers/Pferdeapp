@@ -1,26 +1,28 @@
--- Stallplaner: Supabase-Schema fuer den geplanten Wochenplan-Sync (Milestone 1).
+-- Stallplaner: Supabase-Schema fuer den Wochenplan-Sync.
 --
--- Einmalig im Supabase SQL-Editor ausfuehren (Dashboard -> SQL Editor -> Query ausfuehren).
--- Die App legt hierueber noch KEINE Daten an/liest noch nichts von hier -- das kommt erst
--- in einem spaeteren Schritt (Push/Pull-Sync). Dieses Schema bereitet nur die Struktur vor.
+-- Einmalig im Supabase SQL-Editor ausfuehren (Dashboard -> SQL Editor -> Query ausfuehren) --
+-- deckt den Stand nach migrations/0001-0017 ab, fuer eine komplette Neuinstallation.
 --
 -- Struktur folgt dem lokalen Dexie-Schema (siehe src/db/types.ts): pro Pferd eigene
 -- Betreuer:innen/Aufgaben/Zeitfenster/Termine. Zutaten und Mahlzeiten sind bewusst NICHT
 -- Teil dieses Schemas -- die bleiben laut Konzept dauerhaft lokal, siehe Memory
 -- "project-supabase-sync-concept".
 --
--- BEKANNTE, UNGELÖSTE STOLPERFALLE (mehrfach beim Ersteinrichten neuer Accounts aufgetreten,
--- bisher nur auf der horses-Tabelle beobachtet): ein Insert/Update schlägt mit "new row
--- violates row-level security policy" fehl, obwohl nachweislich alles korrekt ist -- JWT gültig,
--- Policy laut pg_policies exakt wie hier im Code, auth.uid() löst im SQL-Editor korrekt auf,
--- und sogar ein testweise komplett durchlässiges `with check (true)` schlägt mit demselben
--- Fehler fehl. Das schließt einen Fehler in der Policy-Logik selbst aus. Getestete, NICHT
--- zuverlässig wirksame Reparaturversuche: Projekt-Neustart, Schema-Reload,
--- `alter table ... disable/enable row level security` (half einmal, beim zweiten Mal nicht
--- mehr), Policies auf `(select auth.uid())` statt nacktem `auth.uid()` umstellen (siehe
--- migrations/0005). Einzig zuverlässig: RLS auf der betroffenen Tabelle dauerhaft
--- ausgeschaltet lassen (Sicherheitsrisiko, siehe Chat-Historie -- offener Punkt, der an den
--- Supabase-Support gemeldet werden sollte, sobald mehr als eine vertraute Person betroffen ist).
+-- Zugriffsmodell: Zugangs-Warteliste + Pferd-Beitritt per Code. Ein neuer Account bekommt beim
+-- ersten Login (Trigger unten) eine profiles-Zeile mit approved = false und sieht so lange gar
+-- nichts, bis ein Admin (feste E-Mail-Adresse, siehe Policies unten) ihn freigibt. Danach sieht
+-- der Account trotzdem noch kein einziges Pferd, sondern muss sich ueber den kurzen, pro Pferd
+-- eindeutigen join_code gezielt mit einem Pferd verbinden (join_horse_by_code()).
+--
+-- Historische Anmerkung: die ganz frühen Insert/Update-Fehler auf horses ("new row violates
+-- row-level security policy" trotz augenscheinlich korrekter Policy) traten nach dem
+-- Wiedereinschalten von RLS (migrations/0013) erneut auf, diesmal auch beim rechtmäßigen
+-- Besitzer -- also tatsächlich kein Policy-Logik-Fehler, sondern ein nie geklärtes Problem mit
+-- direkten Insert/Update-Zugriffen über PostgREST auf genau diese Tabelle. Workaround: Pferde
+-- werden clientseitig nie mehr direkt geschrieben, sondern ausschließlich über die
+-- security-definer-Funktion upsert_horse() (siehe unten, migrations/0014) -- die läuft
+-- zuverlässig, weil sie (wie join_horse_by_code()) RLS für ihre eigenen internen Schreibzugriffe
+-- umgeht. Alle Policies nutzen weiterhin konsequent `(select auth.uid())` statt `auth.uid()`.
 
 create table if not exists horses (
   id uuid primary key,
@@ -28,14 +30,12 @@ create table if not exists horses (
   owner_id uuid not null references auth.users (id) on delete cascade,
   updated_at timestamptz not null default now(),
   deleted_at timestamptz,
+  join_code text not null unique,
   created_at timestamptz not null default now()
 );
 
--- Aktuell UNGENUTZT fuer die Zugriffspruefung (siehe has_horse_access() weiter unten) -- die App
--- wird nur von einer kleinen, vertrauten Gruppe genutzt, die sich gegenseitig bei allen Pferden
--- hilft, daher ist der Zugriff auf Betreuer:innen/Aufgaben/Zeitfenster/Termine bewusst fuer jeden
--- angemeldeten Account offen (migrations/0007) statt pro Pferd einzeln freigeschaltet werden zu
--- muessen. Tabelle bleibt bestehen, falls spaeter doch feingranularer getrennt werden soll.
+-- Wer außer dem Owner Zugriff auf ein Pferd hat -- wird befuellt, indem jemand ueber
+-- join_horse_by_code() den join_code des Pferds eingibt (siehe unten).
 create table if not exists horse_members (
   horse_id uuid not null references horses (id) on delete cascade,
   user_id uuid not null references auth.users (id) on delete cascade,
@@ -79,18 +79,264 @@ create table if not exists care_entries (
   updated_at timestamptz not null default now()
 );
 
+-- Eine Gruppe: Accounts darin geben sich gegenseitig automatisch Zugriff auf ALLE ihre
+-- jeweiligen Pferde (siehe has_horse_access() weiter unten), statt dass jede Person jede andere
+-- einzeln pro Pferd einladen muss. Ergänzt horse_members, ersetzt es nicht.
+create table if not exists groups (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  owner_id uuid not null references auth.users (id) on delete cascade,
+  join_code text not null unique,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists group_members (
+  group_id uuid not null references groups (id) on delete cascade,
+  user_id uuid not null references auth.users (id) on delete cascade,
+  primary key (group_id, user_id)
+);
+
+-- Ein Account pro auth.users-Zeile (automatisch per Trigger angelegt, siehe unten). approved
+-- steuert die Zugangs-Warteliste: erst wenn true, greift has_horse_access() ueberhaupt.
+create table if not exists profiles (
+  id uuid primary key references auth.users (id) on delete cascade,
+  email text not null,
+  approved boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
+create or replace function handle_new_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into profiles (id, email) values (new.id, new.email);
+  return new;
+end;
+$$;
+
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute function handle_new_user();
+
+-- Alle Gruppen-IDs, denen ein Account angehört (als Ersteller:in oder Mitglied).
+create or replace function group_ids_for_user(u_id uuid)
+returns setof uuid
+language sql
+security definer
+stable
+as $$
+  select id from groups where owner_id = u_id
+  union
+  select group_id from group_members where user_id = u_id;
+$$;
+
 -- Zugriff auf Betreuer:innen/Aufgaben/Zeitfenster/Termine (und darüber auch lesend auf die
--- Pferde selbst, siehe "horses: read if member" unten): jeder angemeldete Account, siehe
--- migrations/0007_shared_access_all_authenticated.sql. Umbenennen/Löschen eines Pferds bleibt
--- separat davon dem Owner vorbehalten (siehe "horses: owner updates"/"owner creates" unten).
+-- Pferde selbst, siehe "horses: read if member" unten): nur mit approved = true UND
+-- (Owner, in horse_members eingetragen, oder eine gemeinsame Gruppe mit dem/der Besitzer:in).
 create or replace function has_horse_access(h_id uuid)
 returns boolean
 language sql
 security definer
 stable
 as $$
-  select (select auth.uid()) is not null;
+  select
+    exists (select 1 from profiles where id = (select auth.uid()) and approved = true)
+    and (
+      exists (select 1 from horses where id = h_id and owner_id = (select auth.uid()))
+      or exists (select 1 from horse_members where horse_id = h_id and user_id = (select auth.uid()))
+      or exists (
+        select 1 from horses h
+        where h.id = h_id
+        and exists (
+          select gid from group_ids_for_user(h.owner_id) gid
+          intersect
+          select gid from group_ids_for_user((select auth.uid())) gid
+        )
+      )
+    );
 $$;
+
+-- Tritt dem Pferd zum angegebenen Code bei (fuer den aufrufenden, bereits freigegebenen
+-- Account). Wird aus der App per supabase.rpc('join_horse_by_code', { code }) aufgerufen.
+create or replace function join_horse_by_code(code text)
+returns text
+language plpgsql
+security definer
+as $$
+declare
+  target_horse horses%rowtype;
+begin
+  if not exists (select 1 from profiles where id = auth.uid() and approved = true) then
+    raise exception 'Zugang noch nicht freigegeben.';
+  end if;
+
+  select * into target_horse from horses where join_code = upper(code) and deleted_at is null;
+  if not found then
+    raise exception 'Ungültiger Code.';
+  end if;
+
+  insert into horse_members (horse_id, user_id)
+  values (target_horse.id, auth.uid())
+  on conflict do nothing;
+
+  return target_horse.name;
+end;
+$$;
+
+-- Legt ein Pferd an oder aktualisiert es -- die App schreibt Pferde ausschließlich hierüber,
+-- nie direkt per .upsert() auf die Tabelle (siehe historische Anmerkung ganz oben). owner_id
+-- wird bewusst nie vom Client übernommen: beim Insert immer der aufrufende Account, beim
+-- Update unverändert (Besitzwechsel ist kein vorgesehenes Feature).
+-- p_join_code hat einen Standardwert: Geräte, die ein Pferd schon vor Einführung des
+-- Beitritts-Codes kannten, senden ihn beim Push evtl. noch nicht mit (kommt erst beim nächsten
+-- Pull lokal an) -- ohne Default würde PostgREST dann keine passende Funktions-Signatur finden.
+create or replace function upsert_horse(
+  p_id uuid,
+  p_name text,
+  p_updated_at timestamptz,
+  p_deleted_at timestamptz,
+  p_join_code text default null
+)
+returns void
+language plpgsql
+security definer
+as $$
+begin
+  if not exists (select 1 from profiles where id = auth.uid() and approved = true) then
+    raise exception 'Zugang noch nicht freigegeben.';
+  end if;
+
+  if exists (select 1 from horses where id = p_id) then
+    -- Nur Besitzer:in oder fester Admin-Account dürfen ändern (nicht jedes Mitglied) -- wer
+    -- nur folgt, kann sich stattdessen selbst austragen ("horse_members: self removes" unten).
+    if not (
+      exists (select 1 from horses where id = p_id and owner_id = auth.uid())
+      or (select auth.jwt() ->> 'email') = 'marschummers@googlemail.com'
+    ) then
+      raise exception 'Kein Zugriff auf dieses Pferd.';
+    end if;
+    update horses
+    set name = p_name,
+        updated_at = p_updated_at,
+        deleted_at = p_deleted_at,
+        join_code = coalesce(p_join_code, join_code)
+    where id = p_id;
+  else
+    insert into horses (id, name, owner_id, updated_at, deleted_at, join_code)
+    values (
+      p_id, p_name, auth.uid(), p_updated_at, p_deleted_at,
+      coalesce(p_join_code, upper(substr(md5(random()::text || p_id::text), 1, 6)))
+    );
+  end if;
+end;
+$$;
+
+create or replace function is_group_member(g_id uuid)
+returns boolean
+language sql
+security definer
+stable
+as $$
+  select
+    exists (select 1 from groups where id = g_id and owner_id = (select auth.uid()))
+    or exists (select 1 from group_members where group_id = g_id and user_id = (select auth.uid()));
+$$;
+
+create or replace function create_group(p_name text)
+returns table(id uuid, join_code text)
+language plpgsql
+security definer
+as $$
+declare
+  new_id uuid;
+  new_code text;
+begin
+  if not exists (select 1 from profiles where id = auth.uid() and approved = true) then
+    raise exception 'Zugang noch nicht freigegeben.';
+  end if;
+  new_id := gen_random_uuid();
+  new_code := upper(substr(md5(random()::text || new_id::text), 1, 6));
+  insert into groups (id, name, owner_id, join_code) values (new_id, p_name, auth.uid(), new_code);
+  return query select new_id, new_code;
+end;
+$$;
+
+-- Tritt der Gruppe zum angegebenen Code bei -- gibt danach automatisch (über
+-- has_horse_access()) Zugriff auf alle Pferde aller anderen Mitglieder, und umgekehrt.
+create or replace function join_group_by_code(code text)
+returns text
+language plpgsql
+security definer
+as $$
+declare
+  target_group groups%rowtype;
+begin
+  if not exists (select 1 from profiles where id = auth.uid() and approved = true) then
+    raise exception 'Zugang noch nicht freigegeben.';
+  end if;
+
+  select * into target_group from groups where join_code = upper(code);
+  if not found then
+    raise exception 'Ungültiger Code.';
+  end if;
+
+  insert into group_members (group_id, user_id)
+  values (target_group.id, auth.uid())
+  on conflict do nothing;
+
+  return target_group.name;
+end;
+$$;
+
+create or replace function rename_group(p_id uuid, p_name text)
+returns void
+language plpgsql
+security definer
+as $$
+begin
+  if not exists (select 1 from groups where id = p_id and owner_id = auth.uid()) then
+    raise exception 'Nur die Gruppen-Ersteller:in darf umbenennen.';
+  end if;
+  update groups set name = p_name where id = p_id;
+end;
+$$;
+
+create or replace function regenerate_group_code(p_id uuid)
+returns text
+language plpgsql
+security definer
+as $$
+declare
+  new_code text;
+begin
+  if not exists (select 1 from groups where id = p_id and owner_id = auth.uid()) then
+    raise exception 'Nur die Gruppen-Ersteller:in darf den Code neu erzeugen.';
+  end if;
+  new_code := upper(substr(md5(random()::text || p_id::text || clock_timestamp()::text), 1, 6));
+  update groups set join_code = new_code where id = p_id;
+  return new_code;
+end;
+$$;
+
+alter table groups enable row level security;
+alter table group_members enable row level security;
+
+-- Den Code sieht/verwaltet nicht nur die Ersteller:in, sondern jedes Mitglied (bewusste
+-- Entscheidung, siehe Chat) -- nur Mitglieder rauswerfen bleibt der Ersteller:in vorbehalten.
+create policy "groups: read if member" on groups
+  for select using (is_group_member(id));
+
+create policy "group_members: read if member" on group_members
+  for select using (is_group_member(group_id));
+
+create policy "group_members: owner removes" on group_members
+  for delete using (
+    exists (select 1 from groups where id = group_id and owner_id = (select auth.uid()))
+  );
 
 alter table horses enable row level security;
 alter table horse_members enable row level security;
@@ -98,18 +344,32 @@ alter table caretakers enable row level security;
 alter table task_defs enable row level security;
 alter table time_slot_defs enable row level security;
 alter table care_entries enable row level security;
+alter table profiles enable row level security;
 
 create policy "horses: read if member" on horses
   for select using (has_horse_access(id));
 create policy "horses: owner creates" on horses
   for insert with check (owner_id = (select auth.uid()));
--- Umbenennen/Löschen darf jede*r angemeldete Account, nicht nur der Ersteller -- siehe
--- migrations/0008_horses_any_authenticated_updates.sql.
-create policy "horses: any authenticated updates" on horses
-  for update using ((select auth.uid()) is not null);
+-- Umbenennen/Löschen nur Besitzer:in oder fester Admin-Account (nicht jedes Mitglied) -- der
+-- eigentliche Schreibpfad läuft über upsert_horse(), diese Policy ist Verteidigung in der Tiefe.
+create policy "horses: owner or admin updates" on horses
+  for update using (
+    owner_id = (select auth.uid())
+    or (select auth.jwt() ->> 'email') = 'marschummers@googlemail.com'
+  );
 
 create policy "horse_members: read if member" on horse_members
   for select using (has_horse_access(horse_id));
+-- "Entfolgen": die eigene Mitgliedschaft darf man immer selbst entfernen.
+create policy "horse_members: self removes" on horse_members
+  for delete using (user_id = (select auth.uid()));
+-- Entfernen ANDERER Mitglieder (Kicken) darf nur der/die Besitzer:in des jeweiligen Pferds.
+-- Beitreten läuft ausschließlich über join_horse_by_code() (security definer), keine direkte
+-- Insert-Policy.
+create policy "horse_members: owner removes" on horse_members
+  for delete using (
+    exists (select 1 from horses where id = horse_id and owner_id = (select auth.uid()))
+  );
 
 create policy "caretakers: rw if member" on caretakers
   for all using (has_horse_access(horse_id)) with check (has_horse_access(horse_id));
@@ -119,3 +379,22 @@ create policy "time_slot_defs: rw if member" on time_slot_defs
   for all using (has_horse_access(horse_id)) with check (has_horse_access(horse_id));
 create policy "care_entries: rw if member" on care_entries
   for all using (has_horse_access(horse_id)) with check (has_horse_access(horse_id));
+
+-- Jede*r darf die eigene Zeile lesen (fuer den "Warte auf Freigabe"-Bildschirm in der App).
+create policy "profiles: read own" on profiles
+  for select using (id = (select auth.uid()));
+-- Nur der Admin (feste E-Mail-Adresse) sieht alle Profile (Warteliste) und darf approved setzen.
+create policy "profiles: admin reads all" on profiles
+  for select using ((select auth.jwt() ->> 'email') = 'marschummers@googlemail.com');
+create policy "profiles: admin approves" on profiles
+  for update using ((select auth.jwt() ->> 'email') = 'marschummers@googlemail.com');
+-- Besitzer:innen duerfen zusaetzlich die Profile (E-Mail) der Mitglieder ihrer eigenen Pferde
+-- lesen, fuer die Mitglieder-Liste in der Verwaltung.
+create policy "profiles: owner reads horse members" on profiles
+  for select using (
+    exists (
+      select 1 from horse_members hm
+      join horses h on h.id = hm.horse_id
+      where hm.user_id = profiles.id and h.owner_id = (select auth.uid())
+    )
+  );
