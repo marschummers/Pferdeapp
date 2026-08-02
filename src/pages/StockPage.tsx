@@ -19,9 +19,14 @@ export default function StockPage() {
     () => db.ingredients.orderBy('name').filter((i) => i.horseId === activeHorseId && !i.deletedAt).toArray(),
     [activeHorseId],
   )
+  // Nur bewusst ausgewählte Zutaten zeigen (siehe trackStock in db/types.ts) – bei vielen
+  // Zutaten (Standardauswahl in db.ts) will niemand für jede einzelne den Bestand pflegen.
+  const trackedIngredients = ingredients?.filter((i) => i.trackStock) ?? []
+  const untrackedIngredients = ingredients?.filter((i) => !i.trackStock) ?? []
   const [editingId, setEditingId] = useState<string | null>(null)
   const [stockDraft, setStockDraft] = useState('')
   const [fullDraft, setFullDraft] = useState('')
+  const [newTrackId, setNewTrackId] = useState('')
 
   function startEdit(ing: Ingredient) {
     setEditingId(ing.id)
@@ -44,6 +49,19 @@ export default function StockPage() {
     await db.ingredients.update(ing.id, { stock: ing.fullAmount })
   }
 
+  // Vorrat-Tracking aktivieren – der Bestandswert selbst bleibt erhalten, falls die Zutat
+  // vorher schon mal getrackt und dann wieder abgewählt wurde.
+  async function startTracking() {
+    if (!newTrackId) return
+    await db.ingredients.update(newTrackId, { trackStock: true })
+    setNewTrackId('')
+  }
+
+  async function stopTracking(id: string) {
+    await db.ingredients.update(id, { trackStock: false })
+    if (editingId === id) setEditingId(null)
+  }
+
   if (ingredients?.length === 0) {
     return (
       <div>
@@ -61,8 +79,12 @@ export default function StockPage() {
         ist.
       </p>
 
+      {trackedIngredients.length === 0 && (
+        <p className="empty-state">Noch keine Zutat für den Vorrat ausgewählt – unten hinzufügen.</p>
+      )}
+
       <div className="card-list">
-        {ingredients?.map((ing) => {
+        {trackedIngredients.map((ing) => {
           const stock = ing.stock ?? 0
           const pct = ing.fullAmount ? Math.max(0, Math.min(100, (stock / ing.fullAmount) * 100)) : null
 
@@ -103,12 +125,22 @@ export default function StockPage() {
 
           return (
             <div className="stock-card" key={ing.id}>
-              <div className="stock-row-top" onClick={() => startEdit(ing)}>
-                <span className="stock-row-name">{ing.name}</span>
-                <span className="stock-row-value">
-                  {stock}
-                  {ing.fullAmount ? ` / ${ing.fullAmount}` : ''} {ing.unit}
-                </span>
+              <div className="stock-row-top">
+                <div className="stock-row-top-tap" onClick={() => startEdit(ing)}>
+                  <span className="stock-row-name">{ing.name}</span>
+                  <span className="stock-row-value">
+                    {stock}
+                    {ing.fullAmount ? ` / ${ing.fullAmount}` : ''} {ing.unit}
+                  </span>
+                </div>
+                <button
+                  className="icon-button"
+                  onClick={() => stopTracking(ing.id)}
+                  aria-label={`${ing.name} nicht mehr im Vorrat tracken`}
+                  title="Nicht mehr im Vorrat tracken"
+                >
+                  ✕
+                </button>
               </div>
               {pct === null ? (
                 <button className="stock-setup-hint" onClick={() => startEdit(ing)}>
@@ -128,6 +160,22 @@ export default function StockPage() {
           )
         })}
       </div>
+
+      {untrackedIngredients.length > 0 && (
+        <div className="task-add-row">
+          <select value={newTrackId} onChange={(e) => setNewTrackId(e.target.value)}>
+            <option value="">Zutat für Vorrat wählen…</option>
+            {untrackedIngredients.map((i) => (
+              <option key={i.id} value={i.id}>
+                {i.name}
+              </option>
+            ))}
+          </select>
+          <button type="button" onClick={startTracking} disabled={!newTrackId}>
+            +
+          </button>
+        </div>
+      )}
     </div>
   )
 }

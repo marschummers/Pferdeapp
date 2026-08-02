@@ -376,9 +376,9 @@ export async function syncAll(): Promise<void> {
       updated_at: iso(i.updatedAt),
       deleted_at: i.deletedAt ? iso(i.deletedAt) : null,
     }),
-    // stock/fullAmount bewusst NICHT aus remote übernehmen, sondern den lokalen Wert erhalten:
-    // der Vorrat ist rein geräte-lokal (siehe Kommentar an Ingredient in db/types.ts) und wird
-    // remote gar nicht erst mitgeführt.
+    // stock/fullAmount/trackStock bewusst NICHT aus remote übernehmen, sondern den lokalen Wert
+    // erhalten: das sind alles rein geräte-lokale Anzeige-/Bestandswerte (siehe Kommentar an
+    // Ingredient in db/types.ts) und werden remote gar nicht erst mitgeführt.
     (r, existingLocal) => ({
       id: r.id,
       horseId: r.horse_id,
@@ -387,6 +387,7 @@ export async function syncAll(): Promise<void> {
       manufacturer: r.manufacturer ?? undefined,
       stock: existingLocal?.stock,
       fullAmount: existingLocal?.fullAmount,
+      trackStock: existingLocal?.trackStock,
       updatedAt: ms(r.updated_at),
       deletedAt: r.deleted_at ? ms(r.deleted_at) : undefined,
     }),

@@ -123,9 +123,78 @@ db.version(5)
     }
   })
 
+// Standardauswahl an Zutaten, die bei jedem Pferd von Anfang an vorhanden sein soll (siehe
+// db.on('populate') und version(6).upgrade() unten). Menge/Vorrat wird bewusst nicht
+// vorbelegt (stock/fullAmount bleiben leer) – das trägt jede:r selbst in „Vorrat" ein.
+const DEFAULT_INGREDIENTS: { name: string; unit: string }[] = [
+  { name: 'Hafer', unit: 'g' },
+  { name: 'Gerste', unit: 'g' },
+  { name: 'Maisflocken', unit: 'g' },
+  { name: 'Müsli', unit: 'g' },
+  { name: 'Mash', unit: 'g' },
+  { name: 'Mineralfutter', unit: 'g' },
+  { name: 'Leinöl', unit: 'ml' },
+  { name: 'Hanföl', unit: 'ml' },
+  { name: 'Mariendistel', unit: 'g' },
+  { name: 'Spirulina', unit: 'g' },
+  { name: 'Fenchel', unit: 'g' },
+  { name: 'Leinsamen', unit: 'g' },
+  { name: 'Rote Beete', unit: 'g' },
+  { name: 'Chiasamen', unit: 'g' },
+];
+
+// Backfillt die Standard-Zutaten (siehe DEFAULT_INGREDIENTS) auf das erste bekannte Pferd, für
+// alle, die die App schon vor deren Einführung genutzt haben – Neuinstallationen bekommen sie
+// direkt über db.on('populate'). Nur Namen ergänzen, die dort noch nicht existieren, damit ein
+// erneuter Durchlauf (bzw. bereits selbst angelegte gleichnamige Zutaten) nichts verdoppelt.
+db.version(6).upgrade(async (tx) => {
+  const horse = await tx.table('horses').toCollection().first()
+  if (!horse) return
+  const existingNames = new Set(
+    (await tx.table('ingredients').where('horseId').equals(horse.id).toArray()).map((i) => i.name.toLowerCase()),
+  )
+  const now = Date.now()
+  const toAdd = DEFAULT_INGREDIENTS.filter((d) => !existingNames.has(d.name.toLowerCase())).map((d) => ({
+    id: newId(),
+    horseId: horse.id,
+    name: d.name,
+    unit: d.unit,
+    updatedAt: now,
+  }))
+  if (toAdd.length > 0) await tx.table('ingredients').bulkAdd(toAdd)
+})
+
+// Demo-Mahlzeiten, die bei jedem Pferd von Anfang an vorhanden sein sollen (siehe
+// db.on('populate') und version(7).upgrade() unten) – bewusst ohne Zutaten/Zubereitung, das
+// trägt jede:r für ihr/sein Pferd selbst ein.
+const DEFAULT_MEALS = ['Frühstück', 'Mittagessen', 'Abendessen'];
+
+// Backfillt die Demo-Mahlzeiten (siehe DEFAULT_MEALS) auf das erste bekannte Pferd, für alle,
+// die die App schon vor deren Einführung genutzt haben – Neuinstallationen bekommen sie direkt
+// über db.on('populate'). Nur Namen ergänzen, die dort noch nicht existieren, gleiches Muster
+// wie beim Zutaten-Backfill in version(6).
+db.version(7).upgrade(async (tx) => {
+  const horse = await tx.table('horses').toCollection().first()
+  if (!horse) return
+  const existingNames = new Set(
+    (await tx.table('meals').where('horseId').equals(horse.id).toArray()).map((m) => m.name.toLowerCase()),
+  )
+  const now = Date.now()
+  const toAdd = DEFAULT_MEALS.filter((name) => !existingNames.has(name.toLowerCase())).map((name) => ({
+    id: newId(),
+    horseId: horse.id,
+    name,
+    ingredients: [],
+    prepSteps: [],
+    updatedAt: now,
+  }))
+  if (toAdd.length > 0) await tx.table('meals').bulkAdd(toAdd)
+})
+
 // Nur beim allerersten Erzeugen der Datenbank (nicht bei jedem App-Start) mit sinnvollen
-// Standardwerten befüllen, damit direkt nutzbare Zeitfenster/Aufgaben vorhanden sind.
-// Läuft für Neuinstallationen direkt auf der aktuellen Version (nicht über .upgrade()).
+// Standardwerten befüllen, damit direkt nutzbare Zeitfenster/Aufgaben/Zutaten/Mahlzeiten
+// vorhanden sind. Läuft für Neuinstallationen direkt auf der aktuellen Version (nicht über
+// .upgrade()).
 db.on('populate', () => {
   const horseId = newId();
   const now = Date.now();
@@ -145,6 +214,25 @@ db.on('populate', () => {
   ];
   db.timeSlotDefs.bulkAdd(defaultTimeSlots);
   db.taskDefs.bulkAdd(defaultTasks);
+
+  const defaultIngredients: Ingredient[] = DEFAULT_INGREDIENTS.map((d) => ({
+    id: newId(),
+    horseId,
+    name: d.name,
+    unit: d.unit,
+    updatedAt: now,
+  }));
+  db.ingredients.bulkAdd(defaultIngredients);
+
+  const defaultMeals: Meal[] = DEFAULT_MEALS.map((name) => ({
+    id: newId(),
+    horseId,
+    name,
+    ingredients: [],
+    prepSteps: [],
+    updatedAt: now,
+  }));
+  db.meals.bulkAdd(defaultMeals);
 });
 
 export function newId(): string {

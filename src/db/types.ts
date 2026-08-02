@@ -94,6 +94,10 @@ export interface CareEntry {
 // werden nie mit übertragen, da der Vorrat pro Stall unterschiedlich ist. Fremde, nur zum
 // Auflösen fremder Rezepte lokal vorhandene Zutaten werden in der eigenen Verwaltung
 // (IngredientsSection.tsx) deshalb nach `horseId === activeHorseId` ausgeblendet.
+// `trackStock` steuert, ob diese Zutat auf der Vorrat-Seite auftaucht – bei vielen Zutaten
+// (siehe Standardauswahl in db.ts) will man nicht für jede einzelne den Bestand pflegen, daher
+// per Button auf StockPage.tsx gezielt dazu-/abwählbar. Rein lokale Anzeige-Präferenz wie
+// stock/fullAmount, wird nie synchronisiert.
 export interface Ingredient {
   id: string;
   horseId: string;
@@ -102,6 +106,7 @@ export interface Ingredient {
   manufacturer?: string;
   stock?: number;
   fullAmount?: number;
+  trackStock?: boolean;
   updatedAt: number;
   deletedAt?: number;
 }

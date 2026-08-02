@@ -54,37 +54,16 @@ export default function IngredientsSection() {
     if (editingId === id) resetForm()
   }
 
-  return (
-    <div>
-      <p className="hint">Einmal anlegen, dann in beliebig vielen Mahlzeiten unter „Fütterung“ wiederverwenden.</p>
-
-      <div className="card-list">
-        {ingredients?.length === 0 && (
-          <p className="empty-state">Noch keine Zutaten angelegt. Füge unten die erste hinzu.</p>
-        )}
-        {ingredients?.map((i) => (
-          <div className="ingredient-card" key={i.id}>
-            <div className="ingredient-card-info">
-              <span className="ingredient-card-name">{i.name}</span>
-              {i.manufacturer && <span className="ingredient-card-manufacturer">{i.manufacturer}</span>}
-            </div>
-            <span className="ingredient-card-unit">{i.unit}</span>
-            <button className="icon-button" onClick={() => startEdit(i.id, i)} aria-label="Bearbeiten">
-              ✎
-            </button>
-            <button className="icon-button" onClick={() => handleDelete(i.id)} aria-label="Löschen">
-              ✕
-            </button>
-          </div>
-        ))}
-      </div>
-
-      <div className="edit-panel">
-        <h3>{editingId ? 'Zutat bearbeiten' : 'Neue Zutat hinzufügen'}</h3>
+  // Gemeinsame Felder für "Neue Zutat hinzufügen" (unten, fix) und "Zutat bearbeiten" (klappt
+  // direkt unter der jeweiligen Karte auf) – dieselben State-Variablen, nur der Platz im
+  // Markup unterscheidet sich je nach editingId.
+  function renderFields() {
+    return (
+      <>
         <div className="field-row">
           <div className="field" style={{ flex: 2 }}>
             <span>Name</span>
-            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="z.B. Heucobs" />
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="z.B. Heucobs" autoFocus />
           </div>
           <div className="field">
             <span>Einheit</span>
@@ -95,11 +74,6 @@ export default function IngredientsSection() {
           <span>Hersteller (optional)</span>
           <input value={manufacturer} onChange={(e) => setManufacturer(e.target.value)} placeholder="z.B. Marstall" />
         </div>
-        <datalist id="unit-suggestions">
-          {UNIT_SUGGESTIONS.map((u) => (
-            <option key={u} value={u} />
-          ))}
-        </datalist>
         <div className="edit-panel-actions">
           {editingId && (
             <button className="secondary-button" onClick={resetForm}>
@@ -110,7 +84,58 @@ export default function IngredientsSection() {
             {editingId ? 'Speichern' : 'Hinzufügen'}
           </button>
         </div>
+      </>
+    )
+  }
+
+  return (
+    <div>
+      <p className="hint">Einmal anlegen, dann in beliebig vielen Mahlzeiten unter „Fütterung“ wiederverwenden.</p>
+      <datalist id="unit-suggestions">
+        {UNIT_SUGGESTIONS.map((u) => (
+          <option key={u} value={u} />
+        ))}
+      </datalist>
+
+      <div className="card-list">
+        {ingredients?.length === 0 && (
+          <p className="empty-state">Noch keine Zutaten angelegt. Füge unten die erste hinzu.</p>
+        )}
+        {ingredients?.map((i) => (
+          <div className="ingredient-card-wrap" key={i.id}>
+            <div className={`ingredient-card${editingId === i.id ? ' editing' : ''}`}>
+              <div className="ingredient-card-info">
+                <span className="ingredient-card-name">{i.name}</span>
+                {i.manufacturer && <span className="ingredient-card-manufacturer">{i.manufacturer}</span>}
+              </div>
+              <span className="ingredient-card-unit">{i.unit}</span>
+              <button
+                className="icon-button"
+                onClick={() => (editingId === i.id ? resetForm() : startEdit(i.id, i))}
+                aria-label="Bearbeiten"
+              >
+                ✎
+              </button>
+              <button className="icon-button" onClick={() => handleDelete(i.id)} aria-label="Löschen">
+                ✕
+              </button>
+            </div>
+            {editingId === i.id && (
+              <div className="edit-panel">
+                <h3>Zutat bearbeiten</h3>
+                {renderFields()}
+              </div>
+            )}
+          </div>
+        ))}
       </div>
+
+      {!editingId && (
+        <div className="edit-panel">
+          <h3>Neue Zutat hinzufügen</h3>
+          {renderFields()}
+        </div>
+      )}
     </div>
   )
 }

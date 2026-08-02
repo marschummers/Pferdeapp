@@ -599,8 +599,10 @@
   margin-top: 0.5rem;
 }
 
-.task-add-row input {
+.task-add-row input,
+.task-add-row select {
   flex: 1;
+  min-width: 0;
 }
 
 .task-add-row button {
@@ -1529,6 +1531,15 @@
 
 .stock-row-top {
   display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.stock-row-top-tap {
+  display: flex;
+  flex: 1;
+  min-width: 0;
   align-items: baseline;
   justify-content: space-between;
   gap: 0.6rem;
@@ -1592,6 +1603,21 @@
   border-radius: 16px;
   padding: 0.75rem 0.9rem;
   box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25);
+}
+
+.ingredient-card.editing {
+  border-color: var(--accent-strong);
+  box-shadow: 0 0 0 1px var(--accent-strong);
+}
+
+.ingredient-card-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.ingredient-card-wrap .edit-panel {
+  margin-bottom: 0;
 }
 
 .ingredient-card-info {
