@@ -37,6 +37,15 @@ export default function HorseSection() {
     return horse.ownerId !== undefined && horse.ownerId === session?.user.id
   }
 
+  // Bewusst NICHT einfach `!isOwner(horse)`: solange ownerId lokal noch unbekannt ist (z.B. kurz
+  // nach dem allerersten Sync eines Geräts), darf "Entfolgen" nicht angezeigt werden – sonst
+  // könnte man versehentlich sein EIGENES, nur noch nicht als solches erkanntes Pferd lokal
+  // entfernen (genau das ist einmal passiert). Nur anzeigen, wenn wirklich sicher ist, dass es
+  // NICHT das eigene Pferd ist.
+  function isKnownNotOwner(horse: Horse): boolean {
+    return horse.ownerId !== undefined && horse.ownerId !== session?.user.id
+  }
+
   // Umbenennen/Löschen ist Besitzer:in + festem Admin-Account vorbehalten (siehe
   // migrations/0017) – wer nur folgt, kann sich stattdessen selbst austragen (unfollowHorse).
   function canManage(horse: Horse): boolean {
@@ -272,7 +281,7 @@ export default function HorseSection() {
               </button>
             )}
 
-            {!isOwner(horse) && (
+            {isKnownNotOwner(horse) && (
               <>
                 <button
                   className="secondary-button horse-unfollow-button"

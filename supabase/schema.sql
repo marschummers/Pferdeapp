@@ -1,7 +1,7 @@
 -- Stallplaner: Supabase-Schema fuer den Wochenplan-Sync.
 --
 -- Einmalig im Supabase SQL-Editor ausfuehren (Dashboard -> SQL Editor -> Query ausfuehren) --
--- deckt den Stand nach migrations/0001-0017 ab, fuer eine komplette Neuinstallation.
+-- deckt den Stand nach migrations/0001-0018 ab, fuer eine komplette Neuinstallation.
 --
 -- Struktur folgt dem lokalen Dexie-Schema (siehe src/db/types.ts): pro Pferd eigene
 -- Betreuer:innen/Aufgaben/Zeitfenster/Termine. Zutaten und Mahlzeiten sind bewusst NICHT
@@ -255,7 +255,9 @@ declare
   new_id uuid;
   new_code text;
 begin
-  if not exists (select 1 from profiles where id = auth.uid() and approved = true) then
+  -- profiles.id explizit qualifiziert: sonst kollidiert es mit der Ausgabespalte "id" aus
+  -- "returns table(id uuid, ...)" oben ("column reference \"id\" is ambiguous").
+  if not exists (select 1 from profiles where profiles.id = auth.uid() and approved = true) then
     raise exception 'Zugang noch nicht freigegeben.';
   end if;
   new_id := gen_random_uuid();

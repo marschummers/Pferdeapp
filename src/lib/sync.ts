@@ -59,6 +59,14 @@ async function mergeTable<Local extends { id: string; updatedAt: number }, Remot
     }
   }
 
+  // Erst herunterladen und lokal festschreiben, DANN erst hochladen: schlägt der Push fehl
+  // (z.B. eine einzelne verwaiste Zeile ohne Zugriff mehr), sollen bereits erfolgreich vom
+  // Server geladene Daten trotzdem lokal ankommen, statt durch den geworfenen Fehler verloren
+  // zu gehen. Genau das ist einmal passiert: ein Gerät verlor dadurch vorübergehend sein
+  // eigenes, weiterhin serverseitig vorhandenes Pferd.
+  if (toPutLocal.length > 0) {
+    await localTable.bulkPut(toPutLocal)
+  }
   if (toPushRemote.length > 0) {
     if (pushRemote) {
       await pushRemote(toPushRemote)
@@ -66,9 +74,6 @@ async function mergeTable<Local extends { id: string; updatedAt: number }, Remot
       const { error: upsertError } = await supabase.from(remoteTableName).upsert(toPushRemote)
       if (upsertError) throw new Error(`${remoteTableName}: ${upsertError.message}`)
     }
-  }
-  if (toPutLocal.length > 0) {
-    await localTable.bulkPut(toPutLocal)
   }
 }
 
@@ -186,6 +191,10 @@ export async function syncAll(): Promise<void> {
     // ungeklärter Bug, siehe migrations/0014_upsert_horse_rpc.sql) – die RPC-Funktion, die
     // bereits für horse_members (join_horse_by_code) zuverlässig funktioniert, umgeht das.
     async (rows) => {
+      // Ein Fehler bei einer Zeile darf die anderen nicht blockieren (sonst bräche z.B. eine
+      // einzelne verwaiste Karteileiche mitten in der Liste den Rest der Pferde-Pushes ab) --
+      // alle Zeilen versuchen, erst am Ende einen etwaigen "echten" Fehler werfen.
+      let firstUnexpectedError: Error | null = null
       for (const row of rows) {
         const { error: rpcError } = await client.rpc('upsert_horse', {
           p_id: row.id,
@@ -228,8 +237,9 @@ export async function syncAll(): Promise<void> {
           )
           continue
         }
-        throw new Error(`horses: ${rpcError.message}`)
+        if (!firstUnexpectedError) firstUnexpectedError = new Error(`horses: ${rpcError.message}`)
       }
+      if (firstUnexpectedError) throw firstUnexpectedError
     },
   )
 
