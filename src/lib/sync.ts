@@ -1,6 +1,6 @@
 import type { EntityTable } from 'dexie'
 import { db, DEFAULT_HORSE_NAME } from '../db/db'
-import type { Caretaker, CareEntry, Horse, TaskDef, TimeSlotDef } from '../db/types'
+import type { Caretaker, CareEntry, Horse, Ingredient, Meal, TaskDef, TimeSlotDef } from '../db/types'
 import { supabase } from './supabaseClient'
 
 // Fängt fehlende/kaputte Zeitstempel ab (z.B. Altdaten aus einer Zeit vor `updatedAt`), statt
@@ -127,9 +127,33 @@ interface RemoteCareEntry {
   deleted_at: string | null
 }
 
+// stock/full_amount bewusst NICHT Teil des Remote-Shapes: der Vorrat bleibt strikt lokal
+// (siehe Kommentar an Ingredient in db/types.ts), nur Name/Einheit/Hersteller wandern über
+// den Sync, damit fremde Mahlzeit-Rezepte lesbar sind.
+interface RemoteIngredient {
+  id: string
+  horse_id: string
+  name: string
+  unit: string
+  manufacturer: string | null
+  updated_at: string
+  deleted_at: string | null
+}
+
+interface RemoteMeal {
+  id: string
+  horse_id: string
+  name: string
+  ingredients: Meal['ingredients']
+  prep_steps: string[]
+  tip: string | null
+  updated_at: string
+  deleted_at: string | null
+}
+
 // Zieht die synchronisierbaren Tabellen (Betreuer:innen, Aufgaben, Zeitfenster, Termine,
-// das Pferd selbst) mit Supabase zusammen. Zutaten, Mahlzeiten, Gewicht und Gesundheit bleiben
-// bewusst außen vor – siehe Memory "project-supabase-sync-concept".
+// Zutaten (teilweise), Mahlzeiten, das Pferd selbst) mit Supabase zusammen. Gewicht und
+// Gesundheit bleiben bewusst außen vor – siehe Memory "project-supabase-sync-concept".
 export async function syncAll(): Promise<void> {
   if (!supabase) throw new Error('Supabase ist nicht konfiguriert.')
   // Als eigene Konstante festgehalten, statt weiter unten (auch innerhalb von Callbacks) auf das
@@ -335,6 +359,59 @@ export async function syncAll(): Promise<void> {
       note: r.note ?? undefined,
       mealId: r.meal_id ?? undefined,
       mealDeductedAt: existingLocal?.mealDeductedAt,
+      updatedAt: ms(r.updated_at),
+      deletedAt: r.deleted_at ? ms(r.deleted_at) : undefined,
+    }),
+  )
+
+  await mergeTable<Ingredient, RemoteIngredient>(
+    db.ingredients,
+    'ingredients',
+    (i) => ({
+      id: i.id,
+      horse_id: i.horseId,
+      name: i.name,
+      unit: i.unit,
+      manufacturer: i.manufacturer ?? null,
+      updated_at: iso(i.updatedAt),
+      deleted_at: i.deletedAt ? iso(i.deletedAt) : null,
+    }),
+    // stock/fullAmount bewusst NICHT aus remote übernehmen, sondern den lokalen Wert erhalten:
+    // der Vorrat ist rein geräte-lokal (siehe Kommentar an Ingredient in db/types.ts) und wird
+    // remote gar nicht erst mitgeführt.
+    (r, existingLocal) => ({
+      id: r.id,
+      horseId: r.horse_id,
+      name: r.name,
+      unit: r.unit,
+      manufacturer: r.manufacturer ?? undefined,
+      stock: existingLocal?.stock,
+      fullAmount: existingLocal?.fullAmount,
+      updatedAt: ms(r.updated_at),
+      deletedAt: r.deleted_at ? ms(r.deleted_at) : undefined,
+    }),
+  )
+
+  await mergeTable<Meal, RemoteMeal>(
+    db.meals,
+    'meals',
+    (m) => ({
+      id: m.id,
+      horse_id: m.horseId,
+      name: m.name,
+      ingredients: m.ingredients,
+      prep_steps: m.prepSteps,
+      tip: m.tip ?? null,
+      updated_at: iso(m.updatedAt),
+      deleted_at: m.deletedAt ? iso(m.deletedAt) : null,
+    }),
+    (r) => ({
+      id: r.id,
+      horseId: r.horse_id,
+      name: r.name,
+      ingredients: r.ingredients,
+      prepSteps: r.prep_steps,
+      tip: r.tip ?? undefined,
       updatedAt: ms(r.updated_at),
       deletedAt: r.deleted_at ? ms(r.deleted_at) : undefined,
     }),

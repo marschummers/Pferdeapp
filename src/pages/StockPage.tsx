@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '../db/db'
 import type { Ingredient } from '../db/types'
+import { useActiveHorse } from '../lib/activeHorse'
 
 function stockColor(pct: number): string {
   if (pct >= 40) return 'var(--accent-2)'
@@ -10,7 +11,14 @@ function stockColor(pct: number): string {
 }
 
 export default function StockPage() {
-  const ingredients = useLiveQuery(() => db.ingredients.orderBy('name').toArray(), [])
+  const { activeHorseId } = useActiveHorse()
+  // Vorrat ist grundsätzlich nur fürs eigene Pferd sinnvoll – fremde, nur teilsynchronisierte
+  // Zutaten haben ohnehin keinen lokal getrackten Bestand (siehe Kommentar an Ingredient in
+  // db/types.ts).
+  const ingredients = useLiveQuery(
+    () => db.ingredients.orderBy('name').filter((i) => i.horseId === activeHorseId && !i.deletedAt).toArray(),
+    [activeHorseId],
+  )
   const [editingId, setEditingId] = useState<string | null>(null)
   const [stockDraft, setStockDraft] = useState('')
   const [fullDraft, setFullDraft] = useState('')

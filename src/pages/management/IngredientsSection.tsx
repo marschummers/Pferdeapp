@@ -1,11 +1,19 @@
 import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db, newId } from '../../db/db'
+import { db, getCurrentHorseId, newId } from '../../db/db'
+import { useActiveHorse } from '../../lib/activeHorse'
 
 const UNIT_SUGGESTIONS = ['g', 'kg', 'ml', 'l', 'Stück', 'EL', 'TL', 'Handvoll']
 
 export default function IngredientsSection() {
-  const ingredients = useLiveQuery(() => db.ingredients.orderBy('name').toArray(), [])
+  const { activeHorseId } = useActiveHorse()
+  // Nur die eigenen Zutaten – Zutaten, die nur zum Auflösen fremder (synchronisierter)
+  // Mahlzeit-Rezepte lokal vorhanden sind, sollen hier bewusst nicht auftauchen, sonst wird die
+  // Liste bei mehreren verbundenen Pferden unübersichtlich (siehe MealDetailPage.tsx).
+  const ingredients = useLiveQuery(
+    () => db.ingredients.orderBy('name').filter((i) => i.horseId === activeHorseId && !i.deletedAt).toArray(),
+    [activeHorseId],
+  )
   const [name, setName] = useState('')
   const [unit, setUnit] = useState('')
   const [manufacturer, setManufacturer] = useState('')
@@ -31,16 +39,18 @@ export default function IngredientsSection() {
     if (!trimmedName || !trimmedUnit) return
     const data = { name: trimmedName, unit: trimmedUnit, manufacturer: manufacturer.trim() || undefined }
     if (editingId) {
-      await db.ingredients.update(editingId, data)
+      await db.ingredients.update(editingId, { ...data, updatedAt: Date.now() })
     } else {
-      await db.ingredients.add({ id: newId(), ...data })
+      const horseId = await getCurrentHorseId()
+      await db.ingredients.add({ id: newId(), horseId, ...data, updatedAt: Date.now() })
     }
     resetForm()
   }
 
   async function handleDelete(id: string) {
     if (!confirm('Zutat löschen? Sie wird aus bestehenden Mahlzeiten nicht automatisch entfernt.')) return
-    await db.ingredients.delete(id)
+    // Weiches Löschen statt Entfernen, damit es beim Supabase-Sync mitläuft (lib/sync.ts).
+    await db.ingredients.update(id, { deletedAt: Date.now(), updatedAt: Date.now() })
     if (editingId === id) resetForm()
   }
 

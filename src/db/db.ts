@@ -99,6 +99,30 @@ db.version(4).upgrade(async (tx) => {
     });
 });
 
+// Führt das Konzept "Pferd" auch für Zutaten/Mahlzeiten ein (siehe Kommentare an Ingredient/Meal
+// in db/types.ts): beide werden ab jetzt pferdeweise (teil-)synchronisiert statt rein lokal und
+// global zu bleiben. Bestehende lokale Zeilen werden dem ersten bekannten Pferd zugeordnet,
+// gleiches Muster wie beim horseId-Backfill in version(2).
+db.version(5)
+  .stores({
+    ingredients: 'id, horseId, name',
+    meals: 'id, horseId, name',
+  })
+  .upgrade(async (tx) => {
+    const horse = await tx.table('horses').toCollection().first()
+    const horseId = horse?.id
+    const now = Date.now()
+    for (const tableName of ['ingredients', 'meals']) {
+      await tx
+        .table(tableName)
+        .toCollection()
+        .modify((row) => {
+          row.horseId = horseId
+          row.updatedAt = now
+        })
+    }
+  })
+
 // Nur beim allerersten Erzeugen der Datenbank (nicht bei jedem App-Start) mit sinnvollen
 // Standardwerten befüllen, damit direkt nutzbare Zeitfenster/Aufgaben vorhanden sind.
 // Läuft für Neuinstallationen direkt auf der aktuellen Version (nicht über .upgrade()).

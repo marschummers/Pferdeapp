@@ -26,8 +26,12 @@ export async function applyPendingStockDeductions(): Promise<void> {
       if (meal) {
         for (const mi of meal.ingredients) {
           const ingredient = await db.ingredients.get(mi.ingredientId)
-          if (ingredient) {
-            await db.ingredients.update(ingredient.id, { stock: (ingredient.stock ?? 0) - mi.amount })
+          // Nur abziehen, wenn hier tatsächlich ein lokaler Bestand geführt wird: eine nur
+          // teilsynchronisierte, fremde Zutat (siehe Kommentar an Ingredient in db/types.ts) hat
+          // nie einen echten lokalen Bestand und würde mit `?? 0` sonst fälschlich ins Negative
+          // gezogen.
+          if (ingredient && ingredient.stock !== undefined) {
+            await db.ingredients.update(ingredient.id, { stock: ingredient.stock - mi.amount })
           }
         }
       }

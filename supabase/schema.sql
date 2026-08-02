@@ -1,12 +1,12 @@
 -- Stallplaner: Supabase-Schema fuer den Wochenplan-Sync.
 --
 -- Einmalig im Supabase SQL-Editor ausfuehren (Dashboard -> SQL Editor -> Query ausfuehren) --
--- deckt den Stand nach migrations/0001-0018 ab, fuer eine komplette Neuinstallation.
+-- deckt den Stand nach migrations/0001-0021 ab, fuer eine komplette Neuinstallation.
 --
 -- Struktur folgt dem lokalen Dexie-Schema (siehe src/db/types.ts): pro Pferd eigene
--- Betreuer:innen/Aufgaben/Zeitfenster/Termine. Zutaten und Mahlzeiten sind bewusst NICHT
--- Teil dieses Schemas -- die bleiben laut Konzept dauerhaft lokal, siehe Memory
--- "project-supabase-sync-concept".
+-- Betreuer:innen/Aufgaben/Zeitfenster/Termine sowie -- seit migrations/0021 -- Mahlzeiten
+-- (komplett) und Zutaten (nur Name/Einheit/Hersteller, OHNE Bestand). Der Zutaten-Bestand/Vorrat
+-- bleibt weiterhin bewusst rein lokal, siehe Memory "project-supabase-sync-concept".
 --
 -- Zugriffsmodell: Zugangs-Warteliste + Pferd-Beitritt per Code. Ein neuer Account bekommt beim
 -- ersten Login (Trigger unten) eine profiles-Zeile mit approved = false und sieht so lange gar
@@ -79,6 +79,29 @@ create table if not exists care_entries (
   updated_at timestamptz not null default now()
 );
 
+-- Zutat als Grunddatum: NUR Name/Einheit/Hersteller synchronisiert, absichtlich OHNE
+-- Bestand/Vorrat-Spalten -- der bleibt pro Stall/Gerät lokal (siehe src/lib/stock.ts).
+create table if not exists ingredients (
+  id uuid primary key,
+  horse_id uuid not null references horses (id) on delete cascade,
+  name text not null,
+  unit text not null,
+  manufacturer text,
+  updated_at timestamptz not null default now(),
+  deleted_at timestamptz
+);
+
+create table if not exists meals (
+  id uuid primary key,
+  horse_id uuid not null references horses (id) on delete cascade,
+  name text not null,
+  ingredients jsonb not null default '[]',
+  prep_steps jsonb not null default '[]',
+  tip text,
+  updated_at timestamptz not null default now(),
+  deleted_at timestamptz
+);
+
 -- Eine Gruppe: Accounts darin geben sich gegenseitig automatisch Zugriff auf ALLE ihre
 -- jeweiligen Pferde (siehe has_horse_access() weiter unten), statt dass jede Person jede andere
 -- einzeln pro Pferd einladen muss. Ergänzt horse_members, ersetzt es nicht.
@@ -94,6 +117,15 @@ create table if not exists group_members (
   group_id uuid not null references groups (id) on delete cascade,
   user_id uuid not null references auth.users (id) on delete cascade,
   primary key (group_id, user_id)
+);
+
+-- Reine Account-Präferenz, unabhängig davon wie der Zugriff aufs Pferd zustande kam (Code oder
+-- Gruppe) -- für die Kategorie "Favoriten" in der Pferde-Liste.
+create table if not exists horse_favorites (
+  user_id uuid not null references auth.users (id) on delete cascade,
+  horse_id uuid not null references horses (id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (user_id, horse_id)
 );
 
 -- Ein Account pro auth.users-Zeile (automatisch per Trigger angelegt, siehe unten). approved
@@ -162,6 +194,8 @@ $$;
 
 -- Tritt dem Pferd zum angegebenen Code bei (fuer den aufrufenden, bereits freigegebenen
 -- Account). Wird aus der App per supabase.rpc('join_horse_by_code', { code }) aufgerufen.
+-- Gegenseitig: die andere Person sieht danach automatisch auch das/die eigene(n) Pferd(e) --
+-- Entfolgen bleibt trotzdem je Richtung unabhängig (siehe "horse_members: self removes").
 create or replace function join_horse_by_code(code text)
 returns text
 language plpgsql
@@ -181,6 +215,12 @@ begin
 
   insert into horse_members (horse_id, user_id)
   values (target_horse.id, auth.uid())
+  on conflict do nothing;
+
+  insert into horse_members (horse_id, user_id)
+  select h.id, target_horse.owner_id
+  from horses h
+  where h.owner_id = auth.uid() and h.deleted_at is null
   on conflict do nothing;
 
   return target_horse.name;
@@ -324,8 +364,58 @@ begin
 end;
 $$;
 
+-- Liefert pro zugänglichem Pferd eine Einordnung für die Pferde-Liste in der App: eigenes
+-- Pferd, einzeln gefolgt, favorisiert, und -- falls über eine Gruppe sichtbar -- welche Gruppe
+-- das ist. Wird direkt abgefragt (wie schon profiles/groups), nicht über lib/sync.ts
+-- synchronisiert; die eigentlichen Pferd-Daten kommen weiterhin aus dem lokalen Dexie, nur
+-- gematcht per horse_id.
+create or replace function my_horses()
+returns table (
+  horse_id uuid,
+  name text,
+  join_code text,
+  owner_id uuid,
+  is_own boolean,
+  is_followed boolean,
+  is_favorite boolean,
+  via_group_id uuid,
+  via_group_name text
+)
+language sql
+security definer
+stable
+as $$
+  select
+    h.id,
+    h.name,
+    h.join_code,
+    h.owner_id,
+    h.owner_id = (select auth.uid()),
+    exists (select 1 from horse_members hm where hm.horse_id = h.id and hm.user_id = (select auth.uid())),
+    exists (select 1 from horse_favorites hf where hf.horse_id = h.id and hf.user_id = (select auth.uid())),
+    g.id,
+    g.name
+  from horses h
+  left join lateral (
+    select gr.id, gr.name
+    from groups gr
+    where (
+      gr.owner_id = h.owner_id
+      or exists (select 1 from group_members gm where gm.group_id = gr.id and gm.user_id = h.owner_id)
+    )
+    and (
+      gr.owner_id = (select auth.uid())
+      or exists (select 1 from group_members gm2 where gm2.group_id = gr.id and gm2.user_id = (select auth.uid()))
+    )
+    order by gr.name
+    limit 1
+  ) g on true
+  where h.deleted_at is null and has_horse_access(h.id);
+$$;
+
 alter table groups enable row level security;
 alter table group_members enable row level security;
+alter table horse_favorites enable row level security;
 
 -- Den Code sieht/verwaltet nicht nur die Ersteller:in, sondern jedes Mitglied (bewusste
 -- Entscheidung, siehe Chat) -- nur Mitglieder rauswerfen bleibt der Ersteller:in vorbehalten.
@@ -339,6 +429,12 @@ create policy "group_members: owner removes" on group_members
   for delete using (
     exists (select 1 from groups where id = group_id and owner_id = (select auth.uid()))
   );
+-- "Gruppe verlassen": die eigene Mitgliedschaft darf man immer selbst entfernen.
+create policy "group_members: self removes" on group_members
+  for delete using (user_id = (select auth.uid()));
+
+create policy "horse_favorites: own rows" on horse_favorites
+  for all using (user_id = (select auth.uid())) with check (user_id = (select auth.uid()));
 
 alter table horses enable row level security;
 alter table horse_members enable row level security;
@@ -346,6 +442,8 @@ alter table caretakers enable row level security;
 alter table task_defs enable row level security;
 alter table time_slot_defs enable row level security;
 alter table care_entries enable row level security;
+alter table ingredients enable row level security;
+alter table meals enable row level security;
 alter table profiles enable row level security;
 
 create policy "horses: read if member" on horses
@@ -380,6 +478,10 @@ create policy "task_defs: rw if member" on task_defs
 create policy "time_slot_defs: rw if member" on time_slot_defs
   for all using (has_horse_access(horse_id)) with check (has_horse_access(horse_id));
 create policy "care_entries: rw if member" on care_entries
+  for all using (has_horse_access(horse_id)) with check (has_horse_access(horse_id));
+create policy "ingredients: rw if member" on ingredients
+  for all using (has_horse_access(horse_id)) with check (has_horse_access(horse_id));
+create policy "meals: rw if member" on meals
   for all using (has_horse_access(horse_id)) with check (has_horse_access(horse_id));
 
 -- Jede*r darf die eigene Zeile lesen (fuer den "Warte auf Freigabe"-Bildschirm in der App).

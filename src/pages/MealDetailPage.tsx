@@ -6,8 +6,16 @@ import { db } from '../db/db'
 export default function MealDetailPage() {
   const { mealId } = useParams<{ mealId: string }>()
   const meal = useLiveQuery(() => (mealId ? db.meals.get(mealId) : undefined), [mealId])
-  const ingredients = useLiveQuery(() => db.ingredients.orderBy('name').toArray(), []) ?? []
-  const ingredientById = new Map(ingredients.map((i) => [i.id, i]))
+  // Ungefiltert über alle lokal bekannten Zutaten (auch von fremden, synchronisierten Pferden) –
+  // löst Name/Einheit auch für ein fremdes Rezept korrekt auf, siehe Kommentar an Ingredient in
+  // db/types.ts. Die eigene Verwaltung → Zutaten (IngredientsSection.tsx) filtert dagegen bewusst
+  // auf das eigene Pferd, damit diese Liste bei mehreren Pferden nicht unübersichtlich wird.
+  const allIngredients = useLiveQuery(() => db.ingredients.filter((i) => !i.deletedAt).toArray(), []) ?? []
+  const ingredientById = new Map(allIngredients.map((i) => [i.id, i]))
+  // Zur Auswahl beim Hinzufügen einer neuen Zutat zum Rezept nur die Zutaten DES PFERDS, dem
+  // diese Mahlzeit gehört (nicht zwingend das eigene, falls man gerade ein fremdes Rezept
+  // ansieht) – sonst könnte man versehentlich die Zutat eines dritten Pferds verknüpfen.
+  const ingredients = allIngredients.filter((i) => i.horseId === meal?.horseId)
 
   const [isEditing, setIsEditing] = useState(false)
   const [nameDraft, setNameDraft] = useState('')
@@ -36,10 +44,10 @@ export default function MealDetailPage() {
   async function finishEditing() {
     const trimmedName = nameDraft.trim()
     if (trimmedName && trimmedName !== meal!.name) {
-      await db.meals.update(meal!.id, { name: trimmedName })
+      await db.meals.update(meal!.id, { name: trimmedName, updatedAt: Date.now() })
     }
     if (tipDraft !== null && tipDraft.trim() !== (meal!.tip ?? '')) {
-      await db.meals.update(meal!.id, { tip: tipDraft.trim() || undefined })
+      await db.meals.update(meal!.id, { tip: tipDraft.trim() || undefined, updatedAt: Date.now() })
     }
     setEditingIngredientIndex(null)
     setEditingStepIndex(null)
@@ -49,7 +57,10 @@ export default function MealDetailPage() {
   async function addIngredient() {
     const amount = parseFloat(newAmount)
     if (!newIngredientId || !amount || amount <= 0) return
-    await db.meals.update(meal!.id, { ingredients: [...meal!.ingredients, { ingredientId: newIngredientId, amount }] })
+    await db.meals.update(meal!.id, {
+      ingredients: [...meal!.ingredients, { ingredientId: newIngredientId, amount }],
+      updatedAt: Date.now(),
+    })
     setNewIngredientId('')
     setNewAmount('')
   }
@@ -64,19 +75,22 @@ export default function MealDetailPage() {
     const amount = parseFloat(editingAmountText)
     if (amount && amount > 0) {
       const updated = meal!.ingredients.map((ing, i) => (i === editingIngredientIndex ? { ...ing, amount } : ing))
-      await db.meals.update(meal!.id, { ingredients: updated })
+      await db.meals.update(meal!.id, { ingredients: updated, updatedAt: Date.now() })
     }
     setEditingIngredientIndex(null)
   }
 
   async function removeIngredient(index: number) {
-    await db.meals.update(meal!.id, { ingredients: meal!.ingredients.filter((_, i) => i !== index) })
+    await db.meals.update(meal!.id, {
+      ingredients: meal!.ingredients.filter((_, i) => i !== index),
+      updatedAt: Date.now(),
+    })
   }
 
   async function addStep() {
     const text = newStep.trim()
     if (!text) return
-    await db.meals.update(meal!.id, { prepSteps: [...meal!.prepSteps, text] })
+    await db.meals.update(meal!.id, { prepSteps: [...meal!.prepSteps, text], updatedAt: Date.now() })
     setNewStep('')
   }
 
@@ -90,13 +104,16 @@ export default function MealDetailPage() {
     const text = editingStepText.trim()
     if (text) {
       const updated = meal!.prepSteps.map((s, i) => (i === editingStepIndex ? text : s))
-      await db.meals.update(meal!.id, { prepSteps: updated })
+      await db.meals.update(meal!.id, { prepSteps: updated, updatedAt: Date.now() })
     }
     setEditingStepIndex(null)
   }
 
   async function removeStep(index: number) {
-    await db.meals.update(meal!.id, { prepSteps: meal!.prepSteps.filter((_, i) => i !== index) })
+    await db.meals.update(meal!.id, {
+      prepSteps: meal!.prepSteps.filter((_, i) => i !== index),
+      updatedAt: Date.now(),
+    })
   }
 
   async function moveStep(index: number, direction: -1 | 1) {
@@ -104,7 +121,7 @@ export default function MealDetailPage() {
     if (otherIndex < 0 || otherIndex >= meal!.prepSteps.length) return
     const steps = [...meal!.prepSteps]
     ;[steps[index], steps[otherIndex]] = [steps[otherIndex], steps[index]]
-    await db.meals.update(meal!.id, { prepSteps: steps })
+    await db.meals.update(meal!.id, { prepSteps: steps, updatedAt: Date.now() })
   }
 
   const usedIngredientIds = new Set(meal.ingredients.map((i) => i.ingredientId))

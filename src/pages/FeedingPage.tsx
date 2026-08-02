@@ -1,10 +1,17 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db, newId } from '../db/db'
+import { db, getCurrentHorseId, newId } from '../db/db'
+import { useActiveHorse } from '../lib/activeHorse'
 
 export default function FeedingPage() {
-  const meals = useLiveQuery(() => db.meals.orderBy('name').toArray(), [])
+  const { activeHorseId } = useActiveHorse()
+  // Nur die eigenen Mahlzeiten – fremde Rezepte werden nicht hier durchsucht, sondern gezielt
+  // über einen verknüpften Termin (CareEntry.mealId) geöffnet, siehe MealDetailPage.tsx.
+  const meals = useLiveQuery(
+    () => db.meals.orderBy('name').filter((m) => m.horseId === activeHorseId && !m.deletedAt).toArray(),
+    [activeHorseId],
+  )
   const [newName, setNewName] = useState('')
   const navigate = useNavigate()
 
@@ -12,14 +19,16 @@ export default function FeedingPage() {
     const name = newName.trim()
     if (!name) return
     const id = newId()
-    await db.meals.add({ id, name, ingredients: [], prepSteps: [] })
+    const horseId = await getCurrentHorseId()
+    await db.meals.add({ id, horseId, name, ingredients: [], prepSteps: [], updatedAt: Date.now() })
     setNewName('')
     navigate(`/fuetterung/${id}`)
   }
 
   async function handleDelete(id: string, name: string) {
     if (!confirm(`Mahlzeit „${name}“ löschen?`)) return
-    await db.meals.delete(id)
+    // Weiches Löschen statt Entfernen, damit es beim Supabase-Sync mitläuft (lib/sync.ts).
+    await db.meals.update(id, { deletedAt: Date.now(), updatedAt: Date.now() })
   }
 
   return (

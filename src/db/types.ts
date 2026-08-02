@@ -89,13 +89,21 @@ export interface CareEntry {
 // einer Mahlzeit nicht jedes Mal neu eingegeben werden muss.
 // `stock` ist der aktuelle Bestand, `fullAmount` die Menge bei voller Auffüllung
 // (z.B. Sackgröße) – dient als 100%-Referenz für die Vorrats-Balkenanzeige.
+// Name/Einheit/Hersteller werden pferdeweise synchronisiert (siehe lib/sync.ts), damit fremde
+// Mahlzeit-Rezepte lesbar sind – `stock`/`fullAmount` bleiben dabei bewusst rein lokal und
+// werden nie mit übertragen, da der Vorrat pro Stall unterschiedlich ist. Fremde, nur zum
+// Auflösen fremder Rezepte lokal vorhandene Zutaten werden in der eigenen Verwaltung
+// (IngredientsSection.tsx) deshalb nach `horseId === activeHorseId` ausgeblendet.
 export interface Ingredient {
   id: string;
+  horseId: string;
   name: string;
   unit: string; // z.B. 'g', 'ml', 'Stück'
   manufacturer?: string;
   stock?: number;
   fullAmount?: number;
+  updatedAt: number;
+  deletedAt?: number;
 }
 
 // Eine Zutat innerhalb einer Mahlzeit mit der dafür vorgesehenen Menge (in der Einheit
@@ -108,12 +116,18 @@ export interface MealIngredient {
 // Eine wiederverwendbare Mahlzeit-Vorlage (z.B. "Frühstück"): woraus sie sich zusammensetzt
 // und wie sie zubereitet wird. Noch ohne Zeitbezug – das Verknüpfen mit einer Uhrzeit/dem
 // Wochenplan ist ein bewusst zurückgestellter nächster Schritt.
+// Gehört zu genau einem Pferd und wird komplett synchronisiert (siehe lib/sync.ts), damit z.B.
+// eine Betreuerin eines fremden Pferds das dortige Rezept lesen kann, wenn sie über einen
+// verknüpften Termin (CareEntry.mealId) dorthin gelangt.
 export interface Meal {
   id: string;
+  horseId: string;
   name: string;
   ingredients: MealIngredient[];
   prepSteps: string[];
   tip?: string;
+  updatedAt: number;
+  deletedAt?: number;
 }
 
 // Ein Gewichts-Eintrag. Ein Eintrag pro Kalendertag, erneutes Speichern am selben Tag

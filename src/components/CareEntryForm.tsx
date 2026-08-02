@@ -31,7 +31,12 @@ export default function CareEntryForm({ horseId, dateStr, caretakers, otherCaret
       () => db.taskDefs.orderBy('order').filter((t) => t.horseId === horseId && !t.deletedAt).toArray(),
       [horseId],
     ) ?? []
-  const meals = useLiveQuery(() => db.meals.orderBy('name').toArray(), []) ?? []
+  // Nur Mahlzeiten DIESES Pferds zur Auswahl – ein Termin soll nur Rezepte verknüpfen können,
+  // die auch zu ihm gehören (siehe Kommentar an Meal in db/types.ts).
+  const meals = useLiveQuery(
+    () => db.meals.orderBy('name').filter((m) => m.horseId === horseId && !m.deletedAt).toArray(),
+    [horseId],
+  ) ?? []
 
   // Bei neuen Terminen den eigenen, per "Das bin ich" markierten Betreuer vorauswählen
   // (siehe CaretakersSection.tsx) statt einfach den ersten in der Liste.
