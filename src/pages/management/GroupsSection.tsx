@@ -36,6 +36,8 @@ export default function GroupsSection() {
   const [membersError, setMembersError] = useState<string | null>(null)
   const [memberBusyId, setMemberBusyId] = useState<string | null>(null)
 
+  const [leavingId, setLeavingId] = useState<string | null>(null)
+
   async function load() {
     if (!supabase || !session) return
     // Zwei Abfragen, weil Gruppen, die man selbst erstellt hat, keine eigene group_members-Zeile
@@ -139,6 +141,26 @@ export default function GroupsSection() {
     setMembers((profileRows ?? []) as GroupMember[])
   }
 
+  // Für Mitglieder, die NICHT selbst Ersteller:in sind – die eigene Mitgliedschaft entfernen
+  // (RLS-Policy "group_members: self removes", siehe migrations/0019). Ersteller:innen können
+  // eine Gruppe nicht verlassen (sie müssten sie sonst löschen, was hier bewusst nicht angeboten
+  // wird – die Gruppe bliebe für die anderen Mitglieder sonst als Karteileiche bestehen).
+  async function leaveGroup(group: GroupRow) {
+    if (!supabase || !session) return
+    setLeavingId(group.id)
+    const { error: leaveError } = await supabase
+      .from('group_members')
+      .delete()
+      .eq('group_id', group.id)
+      .eq('user_id', session.user.id)
+    setLeavingId(null)
+    if (leaveError) {
+      setError(leaveError.message)
+      return
+    }
+    await load()
+  }
+
   async function removeMember(group: GroupRow, userId: string) {
     if (!supabase) return
     setMemberBusyId(userId)
@@ -189,6 +211,15 @@ export default function GroupsSection() {
                 <button className="secondary-button" onClick={() => loadMembers(group)}>
                   {membersGroupId === group.id ? 'Mitglieder ausblenden' : 'Mitglieder anzeigen'}
                 </button>
+                {!isOwner && (
+                  <button
+                    className="secondary-button horse-unfollow-button"
+                    onClick={() => leaveGroup(group)}
+                    disabled={leavingId === group.id}
+                  >
+                    {leavingId === group.id ? '…' : 'Gruppe verlassen'}
+                  </button>
+                )}
                 {membersGroupId === group.id && (
                   <div className="horse-members-list">
                     {membersError && <p className="sync-bar-error">{membersError}</p>}

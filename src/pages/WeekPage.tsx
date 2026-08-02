@@ -6,6 +6,7 @@ import type { CareEntry, Caretaker, Meal, TimeSlotDef } from '../db/types'
 import { addDays, formatDayLabel, formatWeekRange, startOfWeek, toDateStr, todayStr, weekDates } from '../lib/date'
 import { useActiveHorse } from '../lib/activeHorse'
 import { useAuth } from '../lib/auth'
+import { useHorseClassifications } from '../lib/horseClassifications'
 import CareEntryForm from '../components/CareEntryForm'
 
 // Ein Termin als Zeile im Tages-Zeitstrahl (siehe .day-timeline in App.css) – ersetzt die
@@ -87,6 +88,7 @@ function TimelineEntry({
 export default function WeekPage() {
   const { session } = useAuth()
   const { horses, activeHorseId } = useActiveHorse()
+  const { classifications } = useHorseClassifications()
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()))
   const [formTarget, setFormTarget] = useState<{ dateStr: string; entry?: CareEntry } | null>(null)
 
@@ -206,6 +208,15 @@ export default function WeekPage() {
     if (b.id === activeHorseId) return 1
     return a.name.localeCompare(b.name)
   })
+  // Durch Gruppen kann sortedHorses inzwischen sehr lang werden – nur das eigene Pferd und
+  // explizit favorisierte (siehe Stern in HorseSection.tsx) bekommen eine direkt antippbare
+  // Pille, der Rest ist über das Dropdown darunter erreichbar.
+  const pillHorses = sortedHorses.filter(
+    (horse) => horse.id === activeHorseId || (classifications.get(horse.id)?.isFavorite ?? false),
+  )
+  const dropdownHorses = sortedHorses.filter(
+    (horse) => horse.id !== activeHorseId && !(classifications.get(horse.id)?.isFavorite ?? false),
+  )
 
   const openTaskCountByHorse = new Map<string, number>()
   for (const entry of otherHorseEntriesToday) {
@@ -228,9 +239,9 @@ export default function WeekPage() {
         </div>
       )}
 
-      {sortedHorses.length > 1 && (
+      {(pillHorses.length > 1 || dropdownHorses.length > 0) && (
         <div className="week-horse-picker">
-          {sortedHorses.map((horse) => (
+          {pillHorses.map((horse) => (
             <button
               key={horse.id}
               className={`week-horse-pill${horse.id === viewedHorseId ? ' active' : ''}`}
@@ -244,6 +255,22 @@ export default function WeekPage() {
               {horse.name}
             </button>
           ))}
+          {dropdownHorses.length > 0 && (
+            <select
+              className="week-horse-dropdown"
+              value={dropdownHorses.some((h) => h.id === viewedHorseId) ? viewedHorseId : ''}
+              onChange={(e) => {
+                if (e.target.value) setViewedHorseId(e.target.value)
+              }}
+            >
+              <option value="">Anderes Pferd…</option>
+              {dropdownHorses.map((horse) => (
+                <option key={horse.id} value={horse.id}>
+                  {horse.name}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
       )}
 

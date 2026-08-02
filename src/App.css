@@ -153,6 +153,17 @@
   font-size: 0.75rem;
 }
 
+.week-horse-dropdown {
+  width: auto;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  border-radius: 999px;
+  padding: 0.4rem 0.9rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
 .cross-horse-hint {
   display: flex;
   flex-direction: column;
@@ -1013,6 +1024,10 @@
   white-space: nowrap;
 }
 
+.horse-manage-name-spacer {
+  flex: 1;
+}
+
 .horse-manage-active-badge {
   flex-shrink: 0;
   font-size: 0.68rem;
@@ -1090,6 +1105,88 @@
   border-radius: 10px;
   padding: 0.4rem 0.6rem;
   font-size: 0.85rem;
+}
+
+/* --- Pferde-Kategorien (Favoriten/Einzeln gefolgt/Gruppen) --- */
+
+.horse-category {
+  margin-bottom: 0.7rem;
+}
+
+.horse-category-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.6rem 0.9rem;
+  font-weight: 600;
+  font-size: 0.88rem;
+  color: var(--text);
+}
+
+.horse-category-chevron {
+  color: var(--accent-strong);
+}
+
+.horse-category-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.horse-category-item {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.horse-category-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.6rem;
+}
+
+.horse-category-row-name {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1rem;
+  background: none;
+  border: none;
+  color: var(--text);
+  font-weight: 600;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.horse-category-row-group {
+  font-weight: 400;
+  font-size: 0.72rem;
+  color: var(--text-dim);
+}
+
+.horse-favorite-star {
+  flex-shrink: 0;
+  color: var(--accent-strong);
+  font-size: 1.1rem;
+}
+
+.horse-category-item .horse-manage-card {
+  border: none;
+  border-radius: 0;
+  border-top: 1px solid var(--border);
+  box-shadow: none;
+  background: var(--bg-elevated-2);
 }
 
 /* --- Sync-Leiste (Verwaltung) --- */

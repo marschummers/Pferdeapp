@@ -3,6 +3,7 @@ import { db, newHorseJoinCode } from '../../db/db'
 import { useActiveHorse } from '../../lib/activeHorse'
 import { useAuth, ADMIN_EMAIL } from '../../lib/auth'
 import { supabase } from '../../lib/supabaseClient'
+import { useHorseClassifications, type HorseClassification } from '../../lib/horseClassifications'
 import type { Horse } from '../../db/types'
 import GroupsSection from './GroupsSection'
 
@@ -10,6 +11,15 @@ interface HorseMember {
   id: string
   email: string
 }
+
+const UNCLASSIFIED_FALLBACK: HorseClassification = {
+  isOwn: false,
+  isFollowed: true,
+  isFavorite: false,
+  viaGroupName: null,
+}
+
+type CategoryKey = 'favoriten' | 'gefolgt' | 'gruppen'
 
 export default function HorseSection() {
   const { session } = useAuth()
@@ -28,10 +38,32 @@ export default function HorseSection() {
   const [unfollowingId, setUnfollowingId] = useState<string | null>(null)
   const [unfollowError, setUnfollowError] = useState<string | null>(null)
 
+  const [favoriteBusyId, setFavoriteBusyId] = useState<string | null>(null)
+  const [favoriteError, setFavoriteError] = useState<string | null>(null)
+
   const [membersHorseId, setMembersHorseId] = useState<string | null>(null)
   const [members, setMembers] = useState<HorseMember[] | null>(null)
   const [membersError, setMembersError] = useState<string | null>(null)
   const [memberBusyId, setMemberBusyId] = useState<string | null>(null)
+
+  // Über alle Pferde hinweg: eigenes/gefolgt/favorisiert/über welche Gruppe sichtbar – siehe
+  // lib/horseClassifications.ts (gemeinsam mit WeekPage.tsx genutzt).
+  const { classifications, error: classificationError, reload: loadClassifications } = useHorseClassifications()
+
+  const [expandedCategory, setExpandedCategory] = useState<CategoryKey | null>(null)
+  const [expandedHorseId, setExpandedHorseId] = useState<string | null>(null)
+
+  // Solange die Einordnung noch nicht geladen ist (z.B. offline direkt nach dem Öffnen), fällt
+  // ein fremdes Pferd übergangsweise unter "Einzeln gefolgt" statt komplett zu verschwinden –
+  // das eigene Pferd bleibt dank des rein lokalen ownerId-Felds zuverlässig erkennbar.
+  function classify(horse: Horse): HorseClassification {
+    const known = classifications.get(horse.id)
+    if (known) return known
+    if (horse.ownerId !== undefined && horse.ownerId === session?.user.id) {
+      return { isOwn: true, isFollowed: false, isFavorite: false, viaGroupName: null }
+    }
+    return UNCLASSIFIED_FALLBACK
+  }
 
   function isOwner(horse: Horse): boolean {
     return horse.ownerId !== undefined && horse.ownerId === session?.user.id
@@ -65,6 +97,7 @@ export default function HorseSection() {
     }
     setJoinCodeInput('')
     setJoinMessage({ text: `Du folgst jetzt „${data}“ – nach dem nächsten Sync sichtbar.`, isError: false })
+    await loadClassifications()
   }
 
   // "Entfolgen": eigene Mitgliedschaft entfernen, ohne dass die Besitzer:in etwas tun muss
@@ -100,6 +133,22 @@ export default function HorseSection() {
         await db.careEntries.where('horseId').equals(horse.id).delete()
       },
     )
+    await loadClassifications()
+  }
+
+  async function toggleFavorite(horse: Horse, isFavorite: boolean) {
+    if (!supabase || !session) return
+    setFavoriteBusyId(horse.id)
+    setFavoriteError(null)
+    const { error } = isFavorite
+      ? await supabase.from('horse_favorites').delete().eq('horse_id', horse.id).eq('user_id', session.user.id)
+      : await supabase.from('horse_favorites').insert({ horse_id: horse.id, user_id: session.user.id })
+    setFavoriteBusyId(null)
+    if (error) {
+      setFavoriteError(error.message)
+      return
+    }
+    await loadClassifications()
   }
 
   async function regenerateJoinCode(horse: Horse) {
@@ -190,15 +239,195 @@ export default function HorseSection() {
       },
     )
     setDeletingId(null)
+    await loadClassifications()
   }
 
   const deletingHorse = horses.find((h) => h.id === deletingId)
+
+  const ownHorses: Horse[] = []
+  const favoriteHorses: Horse[] = []
+  const followedHorses: Horse[] = []
+  const groupHorses: Horse[] = []
+  for (const horse of horses) {
+    const c = classify(horse)
+    if (c.isOwn) ownHorses.push(horse)
+    else if (c.isFavorite) favoriteHorses.push(horse)
+    else if (c.isFollowed) followedHorses.push(horse)
+    else groupHorses.push(horse)
+  }
+
+  // Der komplette Detail-Bereich eines Pferds (Umbenennen/Löschen, Aktiv-Umschalter, Entfolgen
+  // bzw. Gruppen-Hinweis, Besitzer-Werkzeuge) – wird sowohl für "Mein Pferd" oben (immer offen,
+  // dort mit Namen: showNameRow=true) als auch für aufgeklappte Zeilen in den drei Kategorien
+  // darunter verwendet (dort ohne Namen: die zugeklappte Zeile zeigt ihn schon).
+  function renderHorseDetail(horse: Horse, c: HorseClassification, showNameRow = true) {
+    return (
+      <div className="horse-manage-card">
+        {(showNameRow || canManage(horse) || editingId === horse.id) && (
+          <div className="horse-manage-card-row">
+            {editingId === horse.id ? (
+              <>
+                <input
+                  value={editingName}
+                  onChange={(e) => setEditingName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      saveEdit()
+                    }
+                  }}
+                  autoFocus
+                />
+                <button className="icon-button" onClick={saveEdit} aria-label="Speichern">
+                  ✓
+                </button>
+              </>
+            ) : (
+              <>
+                {showNameRow && (
+                  <span className="horse-manage-name">
+                    🐴 {horse.name}
+                    {horse.id === activeHorseId && <span className="horse-manage-active-badge">aktiv</span>}
+                  </span>
+                )}
+                {canManage(horse) && (
+                  <>
+                    {!showNameRow && <span className="horse-manage-name-spacer" />}
+                    <button className="icon-button" onClick={() => startEdit(horse)} aria-label="Umbenennen">
+                      ✎
+                    </button>
+                    <button className="icon-button" onClick={() => startDelete(horse)} aria-label="Löschen">
+                      ✕
+                    </button>
+                  </>
+                )}
+              </>
+            )}
+          </div>
+        )}
+        {/* Bewusst kein Ein-Klick-Umschalter auf der Hauptseite – welches Pferd auf diesem
+            Gerät "aktiv" ist (bestimmt u.a., wo neue Termine landen), wechselt nur hier
+            über einen expliziten Button. */}
+        {horse.id !== activeHorseId && editingId !== horse.id && (
+          <button className="secondary-button horse-activate-button" onClick={() => setActiveHorseId(horse.id)}>
+            Für dieses Gerät verwenden
+          </button>
+        )}
+
+        {isKnownNotOwner(horse) && c.isFollowed && (
+          <>
+            <button
+              className="secondary-button horse-unfollow-button"
+              onClick={() => unfollowHorse(horse)}
+              disabled={unfollowingId === horse.id}
+            >
+              {unfollowingId === horse.id ? '…' : 'Entfolgen'}
+            </button>
+            {unfollowError && <p className="sync-bar-error">{unfollowError}</p>}
+          </>
+        )}
+
+        {isKnownNotOwner(horse) && !c.isFollowed && c.viaGroupName && (
+          <p className="hint">
+            Um dieses Pferd nicht mehr zu sehen, verlasse die Gruppe <strong>{c.viaGroupName}</strong> (Verwaltung →
+            Pferd → unten).
+          </p>
+        )}
+
+        {isOwner(horse) && (
+          <div className="horse-owner-tools">
+            <div className="horse-join-code-row">
+              <span className="horse-join-code-label">Beitritts-Code</span>
+              <span className="horse-join-code-value">{horse.joinCode || '…'}</span>
+              <button className="secondary-button" onClick={() => regenerateJoinCode(horse)}>
+                Neu erzeugen
+              </button>
+            </div>
+            <button className="secondary-button" onClick={() => loadMembers(horse)}>
+              {membersHorseId === horse.id ? 'Mitglieder ausblenden' : 'Mitglieder anzeigen'}
+            </button>
+            {membersHorseId === horse.id && (
+              <div className="horse-members-list">
+                {membersError && <p className="sync-bar-error">{membersError}</p>}
+                {!membersError && members === null && <p className="hint">Lädt…</p>}
+                {!membersError && members?.length === 0 && (
+                  <p className="hint">Noch niemand über den Code beigetreten.</p>
+                )}
+                {members?.map((member) => (
+                  <div className="horse-member-row" key={member.id}>
+                    <span>{member.email}</span>
+                    <button
+                      className="icon-button"
+                      onClick={() => removeMember(horse, member.id)}
+                      disabled={memberBusyId === member.id}
+                      aria-label={`${member.email} entfernen`}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  function renderCategory(key: CategoryKey, label: string, list: Horse[]) {
+    const isExpanded = expandedCategory === key
+    return (
+      <div className="horse-category">
+        <button className="horse-category-header" onClick={() => setExpandedCategory(isExpanded ? null : key)}>
+          <span>
+            {label} ({list.length})
+          </span>
+          <span className="horse-category-chevron">{isExpanded ? '▾' : '▸'}</span>
+        </button>
+        {isExpanded && (
+          <div className="horse-category-list">
+            {favoriteError && <p className="sync-bar-error">{favoriteError}</p>}
+            {list.length === 0 && <p className="hint">Keine Pferde in dieser Kategorie.</p>}
+            {list.map((horse) => {
+              const c = classify(horse)
+              const rowExpanded = expandedHorseId === horse.id
+              return (
+                <div className="horse-category-item" key={horse.id}>
+                  <div className="horse-category-row">
+                    <button
+                      className="horse-category-row-name"
+                      onClick={() => setExpandedHorseId(rowExpanded ? null : horse.id)}
+                    >
+                      🐴 {horse.name}
+                      {c.viaGroupName && <span className="horse-category-row-group">{c.viaGroupName}</span>}
+                    </button>
+                    <button
+                      className="icon-button horse-favorite-star"
+                      onClick={() => toggleFavorite(horse, c.isFavorite)}
+                      disabled={favoriteBusyId === horse.id}
+                      aria-label={c.isFavorite ? 'Favorit entfernen' : 'Als Favorit markieren'}
+                    >
+                      {c.isFavorite ? '★' : '☆'}
+                    </button>
+                  </div>
+                  {rowExpanded && renderHorseDetail(horse, c, false)}
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    )
+  }
 
   return (
     <div>
       <div className="edit-panel horse-join-panel">
         <h3>Pferd folgen</h3>
-        <p className="hint">Code von der Person, die das Pferd verwaltet, eingeben.</p>
+        <p className="hint">
+          Code von der Person, die das Pferd verwaltet, eingeben – ihr seht euch danach gegenseitig (unabhängig
+          voneinander wieder entfolgbar).
+        </p>
         <div className="field-row">
           <div className="field">
             <input
@@ -217,122 +446,27 @@ export default function HorseSection() {
             {joining ? '…' : 'Folgen'}
           </button>
         </div>
-        {joinMessage && (
-          <p className={joinMessage.isError ? 'sync-bar-error' : 'hint'}>{joinMessage.text}</p>
-        )}
+        {joinMessage && <p className={joinMessage.isError ? 'sync-bar-error' : 'hint'}>{joinMessage.text}</p>}
       </div>
 
       <p className="hint">
-        Alle Pferde, auf die du Zugriff hast. Umbenennen/Löschen kann nur, wem das Pferd gehört
-        (Löschen entfernt dann auch alle zugehörigen Termine, Betreuer:innen, Aufgaben und
-        Zeitfenster – für alle, die mitsynchronisieren). Folgst du nur, kannst du dich stattdessen
-        jederzeit selbst entfolgen.
+        Dein eigenes Pferd oben. Umbenennen/Löschen kann nur, wem das Pferd gehört (Löschen entfernt dann auch alle
+        zugehörigen Termine, Betreuer:innen, Aufgaben und Zeitfenster – für alle, die mitsynchronisieren).
       </p>
 
       <div className="card-list">
-        {horses.map((horse) => (
-          <div className="horse-manage-card" key={horse.id}>
-            <div className="horse-manage-card-row">
-              {editingId === horse.id ? (
-                <>
-                  <input
-                    value={editingName}
-                    onChange={(e) => setEditingName(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault()
-                        saveEdit()
-                      }
-                    }}
-                    autoFocus
-                  />
-                  <button className="icon-button" onClick={saveEdit} aria-label="Speichern">
-                    ✓
-                  </button>
-                </>
-              ) : (
-                <>
-                  <span className="horse-manage-name">
-                    🐴 {horse.name}
-                    {horse.id === activeHorseId && <span className="horse-manage-active-badge">aktiv</span>}
-                  </span>
-                  {canManage(horse) && (
-                    <>
-                      <button className="icon-button" onClick={() => startEdit(horse)} aria-label="Umbenennen">
-                        ✎
-                      </button>
-                      <button className="icon-button" onClick={() => startDelete(horse)} aria-label="Löschen">
-                        ✕
-                      </button>
-                    </>
-                  )}
-                </>
-              )}
-            </div>
-            {/* Bewusst kein Ein-Klick-Umschalter auf der Hauptseite – welches Pferd auf diesem
-                Gerät "aktiv" ist (bestimmt u.a., wo neue Termine landen), wechselt nur hier
-                über einen expliziten Button. */}
-            {horse.id !== activeHorseId && editingId !== horse.id && (
-              <button
-                className="secondary-button horse-activate-button"
-                onClick={() => setActiveHorseId(horse.id)}
-              >
-                Für dieses Gerät verwenden
-              </button>
-            )}
-
-            {isKnownNotOwner(horse) && (
-              <>
-                <button
-                  className="secondary-button horse-unfollow-button"
-                  onClick={() => unfollowHorse(horse)}
-                  disabled={unfollowingId === horse.id}
-                >
-                  {unfollowingId === horse.id ? '…' : 'Entfolgen'}
-                </button>
-                {unfollowError && <p className="sync-bar-error">{unfollowError}</p>}
-              </>
-            )}
-
-            {isOwner(horse) && (
-              <div className="horse-owner-tools">
-                <div className="horse-join-code-row">
-                  <span className="horse-join-code-label">Beitritts-Code</span>
-                  <span className="horse-join-code-value">{horse.joinCode || '…'}</span>
-                  <button className="secondary-button" onClick={() => regenerateJoinCode(horse)}>
-                    Neu erzeugen
-                  </button>
-                </div>
-                <button className="secondary-button" onClick={() => loadMembers(horse)}>
-                  {membersHorseId === horse.id ? 'Mitglieder ausblenden' : 'Mitglieder anzeigen'}
-                </button>
-                {membersHorseId === horse.id && (
-                  <div className="horse-members-list">
-                    {membersError && <p className="sync-bar-error">{membersError}</p>}
-                    {!membersError && members === null && <p className="hint">Lädt…</p>}
-                    {!membersError && members?.length === 0 && (
-                      <p className="hint">Noch niemand über den Code beigetreten.</p>
-                    )}
-                    {members?.map((member) => (
-                      <div className="horse-member-row" key={member.id}>
-                        <span>{member.email}</span>
-                        <button
-                          className="icon-button"
-                          onClick={() => removeMember(horse, member.id)}
-                          disabled={memberBusyId === member.id}
-                          aria-label={`${member.email} entfernen`}
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+        {ownHorses.map((horse) => (
+          <div key={horse.id}>{renderHorseDetail(horse, classify(horse))}</div>
         ))}
       </div>
+
+      {classificationError && (
+        <p className="sync-bar-error">Einordnung konnte nicht geladen werden: {classificationError}</p>
+      )}
+
+      {renderCategory('favoriten', 'Favoriten', favoriteHorses)}
+      {renderCategory('gefolgt', 'Einzeln gefolgt', followedHorses)}
+      {renderCategory('gruppen', 'Gruppen', groupHorses)}
 
       <GroupsSection />
 
